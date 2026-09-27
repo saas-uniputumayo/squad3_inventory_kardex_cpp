@@ -309,3 +309,150 @@ Secuencia de Despacho con Bloqueo Pesimista (SELECT FOR UPDATE) anti stock-negat
 * **Fiado (Crédito Comercial a Clientes):** Venta realizada a un cliente de confianza con plazo de pago diferido. Requiere validación de cupo máximo autorizado y registro en la cuenta contable 130505 (Clientes Nacionales).
 * **Idempotencia (`X-Idempotency-Key`):** Garantía arquitectónica donde una misma petición HTTP repetida múltiples veces (por cortes de red o reintentos) solo se ejecuta una única vez en la base de datos, evitando dobles cobros o dobles salidas de inventario.
 * **ESC/POS:** Lenguaje de comandos binarios estandarizado por Epson para controlar impresoras térmicas de tickets (corte de papel, alineación, negrita y apertura de gaveta monedero).
+
+
+---
+
+## 12. GUIA DE AUTONOMIA Y DESARROLLO AISLADO (SIN DEPENDER DE OTROS ESCUADRONES)
+
+### Principio Arquitectonico: Autonomia mediante Puertos y Adaptadores
+
+Gracias a la Arquitectura Hexagonal, cada escuadron puede compilar, ejecutar y probar su servicio de forma **100% independiente** sin esperar a que los demas equipos terminen de construir sus APIs. El secreto esta en el **intercambio de adaptadores**:
+
+* **Fase 1 (Desarrollo Aislado):** Se inyectan adaptadores Mock/Stub que simulan las respuestas de los servicios externos con datos deterministicos.
+* **Fase 2 (Integracion Real):** Se intercambian los adaptadores Mock por adaptadores HTTP reales que apuntan a las URLs de produccion en la nube. **No se modifica ni una sola linea de logica de negocio.**
+
+### Adaptadores Mock para Desarrollo Aislado
+
+E3 solo necesita simular la autenticacion de E1 durante su desarrollo independiente:
+
+```typescript
+// infrastructure/adapters/out/mock-auth.adapter.ts
+import { AuthPort } from '../../application/ports/out/auth.port';
+
+export class MockAuthAdapter implements AuthPort {
+  async verifyToken(token: string) {
+    return {
+      userId: '00000000-0000-0000-0000-000000000001',
+      tenantId: '30000000-0000-0000-0000-000000000003',
+      role: 'WAREHOUSE_MANAGER',
+    };
+  }
+}
+```
+
+**Intercambio de Adaptador en el Modulo NestJS:**
+
+```typescript
+// En desarrollo aislado:
+{ provide: AUTH_PORT, useClass: MockAuthAdapter }
+
+// En integracion real:
+{ provide: AUTH_PORT, useClass: HttpAuthAdapter }
+```
+
+### Pruebas de Concurrencia Aisladas
+
+Las pruebas criticas de SELECT FOR UPDATE pueden ejecutarse localmente contra la base de datos remota sin depender de ningun otro servicio:
+
+```bash
+# Ejecutar prueba de bloqueo pesimista con dos transacciones simultaneas
+pnpm test:concurrency
+
+# Validar calculo CPP con datos de seed
+pnpm test:cpp-calculation
+```
+
+---
+
+## 13. AISLAMIENTO DE DATOS: TENANT DEDICADO POR ESCUADRON
+
+Todos los escuadrones comparten la misma base de datos PostgreSQL 16 centralizada. Para evitar colisiones entre los datos de prueba de diferentes equipos, cada escuadron opera dentro de su propio **Tenant (Empresa) pre-sembrado** con un UUID fijo y aislado por Row Level Security (RLS).
+
+### Tenant Asignado a E3
+
+| Propiedad | Valor |
+|:---|:---|
+| **UUID del Tenant** | `30000000-0000-0000-0000-000000000003` |
+| **Nombre Logico** | Tenant Escuadron 3 - Inventario Kardex Dev |
+| **Variable de Sesion RLS** | `SET LOCAL app.current_tenant_id = '30000000-0000-0000-0000-000000000003'` |
+
+### Tenant para Sustentacion Final Integrada (Sala 121)
+
+| Propiedad | Valor |
+|:---|:---|
+| **UUID del Tenant Demo** | `99000000-0000-0000-0000-000000000099` |
+| **Nombre** | Tenant DEMO-121 Sustentacion Integrada |
+| **Empresa Ficticia** | Ferreteria del Putumayo S.A.S. (NIT: 900.121.121-9) |
+
+El dia de la sustentacion, todos los escuadrones operaran sobre el Tenant `DEMO-121` para demostrar la interoperabilidad completa del sistema.
+
+### Script SQL de Seed para E3
+
+```sql
+-- Seed de Tenant dedicado para Escuadron 3
+INSERT INTO tenants (id, nit_rut, business_name, trade_name, address, phone, email)
+VALUES ('30000000-0000-0000-0000-000000000003', '900.003.003-3', 'Empresa Dev E3 S.A.S.', 'Bodega E3 Dev', 'Sala 121 UniPutumayo', '3001234503', 'e3@uniputumayo.edu.co')
+ON CONFLICT (nit_rut) DO NOTHING;
+
+-- Seed de productos de prueba para Kardex y CPP
+INSERT INTO products (id, tenant_id, sku, barcode, name, unit_of_measure, cost_price, sale_price, tax_rate) VALUES
+('31000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003', 'CEM-001', '7701234567890', 'Cemento Gris Argos 50kg', 'BULTO', 24500.0000, 32000.00, 0.19),
+('31000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000003', 'CAB-008', '7701234567891', 'Cable Cobre THHN #12 Centelsa', 'METRO', 3100.0000, 4200.00, 0.19),
+('31000000-0000-0000-0000-000000000003', '30000000-0000-0000-0000-000000000003', 'VAR-004', '7701234567893', 'Varilla Corrugada 1/2 pulgada', 'UNIDAD', 14200.0000, 18000.00, 0.19),
+('31000000-0000-0000-0000-000000000004', '30000000-0000-0000-0000-000000000003', 'PNT-034', '7701234567892', 'Pintura Vinilo Blanco 1 Galon', 'GALON', 42000.0000, 58000.00, 0.19)
+ON CONFLICT ON CONSTRAINT uq_tenant_product_sku DO NOTHING;
+```
+
+---
+
+## 14. DESPLIEGUE EN LA NUBE Y DOCUMENTACION INTERACTIVA
+
+### URL de Produccion en la Nube
+
+Cada escuadron backend despliega su API como un contenedor autonomo con una URL publica HTTPS:
+
+| Servicio | URL de Produccion |
+|:---|:---|
+| **E3 (Este Escuadron)** | `https://squad3-inventory.railway.app` |
+| E1 - Core Auth | `https://squad1-auth.railway.app` |
+| E2 - Motor Contable | `https://squad2-accounting.railway.app` |
+| E3 - Inventario Kardex | `https://squad3-inventory.railway.app` |
+| E6 - Reportes y Auditoria | `https://squad6-reports.railway.app` |
+| E7 - Cartera y Compras | `https://squad7-credits.railway.app` |
+
+### Swagger / OpenAPI Interactivo
+
+Una vez desplegado, la documentacion interactiva Swagger esta disponible en:
+
+```
+https://squad3-inventory.railway.app/api/docs
+```
+
+Desde ahi, cualquier escuadron companero puede explorar los DTOs de entrada/salida, probar peticiones con "Try it out" y descargar el archivo `swagger.json` para generar clientes tipados automaticamente.
+
+### Configuracion de Variables de Entorno para Integracion
+
+Al pasar de Mocks a la integracion real, actualice las URLs en su archivo `.env` o `.env.local`:
+
+```env
+# Apuntar a los servicios reales desplegados en la nube
+AUTH_SERVICE_URL=https://squad1-auth.railway.app
+ACCOUNTING_SERVICE_URL=https://squad2-accounting.railway.app
+INVENTORY_SERVICE_URL=https://squad3-inventory.railway.app
+REPORTS_SERVICE_URL=https://squad6-reports.railway.app
+CREDITS_SERVICE_URL=https://squad7-credits.railway.app
+```
+
+### Matriz de Autonomia del Sistema Completo
+
+| Escuadron | Puede correr solo | Depende de (Mock) | Depende de (Prod) |
+|:---|:---|:---|:---|
+| **E1** Core Auth | Si, 100% | Ninguno | DB + Redis |
+| **E2** Motor Contable | Si, 100% | Mock Auth E1 | E1 Auth |
+| **E3** Inventario | Si, 100% | Mock Auth E1 | E1 Auth |
+| **E4** Web POS | Si, con Mocks | Mock Auth, Inventario, Contable, Creditos | E1, E2, E3, E6, E7 |
+| **E5** Mobile POS | Si, Offline-First | Isar DB local | E1, E3, E7 |
+| **E6** Reportes | Si, 100% | Mock Auth, Contable, Inventario | E1, E2, E3 |
+| **E7** Cartera | Si, 100% | Mock Auth, Inventario, Contable | E1, E2, E3 |
+| **E8** DevOps | Si, 100% | Ninguno | Monitorea E1-E7 |
