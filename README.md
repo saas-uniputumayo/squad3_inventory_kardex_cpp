@@ -1,256 +1,261 @@
-﻿# GUÍA INDIVIDUAL DE TRABAJO: ESCUADRÓN 3
-## INVENTARIO MULTI-BODEGA & KARDEX PROMEDIO PONDERADO (CPP)
+# SISTEMA SAAS EMPRESARIAL CONTABLE, POS Y GESTIÓN COMERCIAL MULTI-TENANT
+## ESCUADRÓN 3: INVENTORY ENGINE, MULTI-BODEGA & KARDEX PROMEDIO PONDERADO (CPP API)
 ### DIPLOMADO DE OPCIÓN DE GRADO EN DESARROLLO DE SOFTWARE 4.0 (MÓDULOS 4 Y 5)
 **Institución Universitaria del Putumayo - UniPutumayo (Sede Mocoa)**  
 **Facultad de Tecnologías de la Información y la Comunicación**  
-**Programa:** Tecnología en Desarrollo de Software (VI Semestre)  
+**Programa Académico:** Tecnología en Desarrollo de Software (VI Semestre)  
 **Docente Titular y Arquitecto Principal:** Anderson Stiven Moncayo Bermeo  
-**Espacio de Trabajo:** Sala de Cómputo 121  
+**Espacio de Prácticas:** Sala de Cómputo 121 - Campus UniPutumayo  
+**Población Asignada:** 4 Estudiantes (Scrum Autónomo)  
+**Tipo de Entregable:** API Backend Autónoma (NestJS / TypeScript / PostgreSQL 16 con RLS)  
 
+---
 
-## 0. REPOSITORIO OFICIAL DEL ESCUADRON
-Cada integrante del escuadron debe clonar este repositorio oficial de trabajo:
+## 1. MISIÓN Y ALCANCE INDIVIDUAL DEL ESCUADRÓN
+
+Desarrollar la API del motor de inventario multi-bodega con soporte nativo para artículos fraccionarios (metros, kilos, litros, galones, bultos), variantes de productos, bloqueo pesimista de concurrencia (SELECT FOR UPDATE) y la generación inmutable del kardex valorizado mediante Costo Promedio Ponderado (CPP).
+
+### Reglas Sagradas del Proyecto
+1. **Cero Inteligencia Artificial y Cero OCR:** El sistema es 100% transaccional, determinista y auditado. Prohibido el uso de modelos probabilistas o IA predictiva en el código de producción.
+2. **Inmutabilidad Financiera NIIF:** Prohibido el borrado destructivo (DELETE) en asientos contables, comprobantes o inventarios. Toda corrección se realiza mediante contra-asientos reversibles auditados.
+3. **Delimitación Fiscal:** El sistema gestiona Facturación Comercial Interna, Comprobantes POS y Recibos de Caja. No incluye facturación electrónica DIAN externa.
+4. **Aislamiento Multi-Tenant Estricto:** Forzado en PostgreSQL 16 con Row Level Security (RLS) e inyección obligatoria de SET LOCAL app.current_tenant_id.
+
+---
+
+## 2. INSTRUCCIONES DE CLONACIÓN Y ARRANQUE DE SU REPOSITORIO
+
+Cada integrante de este escuadrón debe clonar su propio repositorio de trabajo independiente:
 
 ```bash
 # 1. Clonar el repositorio oficial de su escuadron
 git clone https://github.com/saas-uniputumayo/squad3_inventory_kardex_cpp.git
 cd squad3_inventory_kardex_cpp
-```
 
-### Repositorio Central Monorepo (Contratos y Orquestacion Global)
-Para levantar la infraestructura compartida (PostgreSQL 16, Redis 7) y consultar contratos centrales:
-
-```bash
-# Clonar el monorepo central de la organizacion
-git clone https://github.com/saas-uniputumayo/saas-contable-uniputumayo.git
-cd saas-contable-uniputumayo
+# 2. Configurar variables de entorno locales
 cp .env.example .env
+
+# 3. Instalar dependencias del proyecto
 pnpm install
-docker compose up -d
+
+# 4. Iniciar el servicio en modo desarrollo
+pnpm dev
 ```
 
 ---
 
-## 1. MISIÓN DE SU ESCUADRÓN
-Ustedes administran el stock físico y valorizado del comercio. Su responsabilidad es garantizar el control de existencias en múltiples bodegas con soporte de cantidades fraccionarias (metros, kilos, bultos), evitar condiciones de carrera (overselling) mediante bloqueo transaccional `SELECT ... FOR UPDATE` y mantener el Kardex valorizado inmutable recalculando el Costo Promedio Ponderado (CPP) en cada entrada de compra.
+## 3. ROLES INTERNOS DEL ESCUADRÓN (SCRUM AUTÓNOMO - 4 ESTUDIANTES)
+
+* **Squad Lead & Scrum Master:**  Coordina los contratos de salida de stock con los líderes de Ventas (E4/E5) y las recepciones físicas con Compras (E7), moderando el Daily.
+* **Kardex & Math Specialist:**  Implementa la fórmula matemática del Costo Promedio Ponderado (CPP) y el registro inmutable de movimientos en stock_moves.
+* **Catalog & Multi-Warehouse Specialist:**  Modela productos, unidades de medida fraccionarias, catálogo de bodegas y traslados seguros entre sucursales.
+* **QA & Concurrency Specialist:**  Escribe pruebas de concurrencia pesimista (SELECT FOR UPDATE) para validar que dos ventas simultáneas sobre el último ítem disponible no generen inventario negativo.
 
 ---
 
-## 2. ESTRUCTURA INTERNA DE SUS 4 INTEGRANTES (SCRUM AUTÓNOMO)
-* **Integrante 1 (Squad Lead & Scrum Master):** Coordina los contratos de productos con los equipos de POS (E4 y E5) y Compras (E7), y modera el Daily de 5 minutos.
-* **Integrante 2 (Concurrency & Quant Specialist):** Codifica las funciones de salida de inventario con bloqueo `FOR UPDATE` en `stock_quants`.
-* **Integrante 3 (CPP & Valuation Specialist):** Codifica la fórmula matemática del Costo Promedio Ponderado y la inserción append-only en `stock_moves`.
-* **Integrante 4 (QA & Performance Specialist):** Escribe pruebas de concurrencia que simulan a dos cajeros intentando vender la última unidad al mismo milisegundo para validar que uno de ellos sea rechazado limpiamente.
+## 4. CONTRATOS DE INTEGRACIÓN INTER-ESCUADRÓN (METODOLOGÍA HEXAGONAL)
+
+Este repositorio opera como una API o aplicación completamente autónoma. Una vez completada, sus endpoints serán compartidos y consumidos por los otros escuadrones:
+
+### A. Endpoints y Servicios que este Escuadrón EXPONE para los demás
+* `GET /api/v1/inventory/products`:  Catalogo de productos con existencias en tiempo real, precios de venta y filtro por SKU, nombre o codigo de barras.
+* `POST /api/v1/inventory/products`:  Creacion de producto maestro con definicion de unidad fraccionaria (kg, m, lt, un, bulto).
+* `PATCH /api/v1/inventory/products/`: id
+* `GET /api/v1/inventory/warehouses`:  Listado de bodegas de almacenamiento de la sucursal.
+* `POST /api/v1/inventory/moves/dispatch`:  Despacho atomico de inventario por venta POS con bloqueo pesimista (SELECT FOR UPDATE). Retorna costo unitario exacto.
+* `POST /api/v1/inventory/moves/receive`:  Recepcion fisica de mercancia por compra a proveedor; recalcula automaticamente el Costo Promedio Ponderado (CPP).
+* `POST /api/v1/inventory/moves/reverse`:  Reversa una salida por anulacion auditada y reingresa el stock sin borrar el historico.
+* `POST /api/v1/inventory/transfers`:  Traslado formal de mercancia entre dos bodegas autorizadas.
+* `GET /api/v1/inventory/kardex/`: productId
+
+### B. Endpoints y Servicios que este Escuadrón CONSUME de los demás
+* GET /api/v1/auth/me (Escuadron 1): Validacion de sesion y tenantId.
 
 ---
 
-## 3. SUS DEPENDENCIAS TÉCNICAS
-* **Qué necesitan de los demás:**
-  * El contexto `tenant_id` y las tablas del Escuadrón 1.
-  * La recepción física de facturas de compra del Escuadrón 7 para ingresar stock y recalcular CPP.
-* **Qué le entregan a los demás:**
-  * El catálogo de productos (`GET /api/v1/inventory/products`) para el mostrador de E4 y la app móvil de E5.
-  * El costo de la mercancía saliente (`totalInventoryCost`) para que el Escuadrón 2 cause el asiento contable (613505 deb / 143505 cred).
-  * El historial de movimientos en `stock_moves` para que el Escuadrón 6 exporte el Kardex a Excel.
+## 5. ARQUITECTURA HEXAGONAL Y ESTRUCTURA DE ARCHIVOS
 
----
-
-## 4. ESTRUCTURA HEXAGONAL DE SU CÓDIGO
-Su código vive en `apps/api/src/modules/inventory/`:
+Su código debe estructurarse estrictamente bajo el patrón concéntrico de Arquitectura Hexagonal (Puertos y Adaptadores):
 
 ```
-apps/api/src/modules/inventory/
+src/
 ├── domain/
-│   └── entities/product.entity.ts
+│   └── entities/
+│       ├── product.entity.ts
+│       ├── warehouse.entity.ts
+│       ├── stock-quant.entity.ts
+│       └── stock-move.entity.ts
 ├── application/
 │   ├── ports/
-│   │   ├── in/manage-stock.use-case.ts
-│   │   └── out/inventory-repository.port.ts
-│   └── services/inventory.service.ts
+│   │   ├── in/
+│   │   │   ├── dispatch-stock.use-case.ts
+│   │   │   ├── receive-stock.use-case.ts
+│   │   │   ├── transfer-stock.use-case.ts
+│   │   │   └── get-kardex.use-case.ts
+│   │   └── out/
+│   │       ├── product-repository.port.ts
+│   │       └── stock-repository.port.ts
+│   └── services/
+│       └── kardex.service.ts
 └── infrastructure/
     ├── adapters/
-    │   ├── in/inventory.controller.ts
-    │   └── out/postgres-inventory.repository.ts
+    │   ├── in/
+    │   │   ├── inventory.controller.ts
+    │   │   └── warehouses.controller.ts
+    │   └── out/
+    │       ├── postgres-inventory.repository.ts
+    │       └── postgres-warehouse.repository.ts
     └── inventory.module.ts
 ```
 
+* **Dominio (`domain/`):** Contiene las entidades puras y las reglas matemáticas y de negocio. Cero dependencias de TypeORM, NestJS o librerías externas.
+* **Puertos de Entrada (`application/ports/in/`):** Interfaces que declaran los casos de uso que expone esta API hacia el exterior.
+* **Puertos de Salida (`application/ports/out/`):** Interfaces que declaran qué requiere este servicio (persistencia, caché o clientes HTTP de otros escuadrones).
+* **Adaptadores de Entrada (`infrastructure/adapters/in/`):** Controladores REST que exponen las rutas HTTP y validan los DTOs.
+* **Adaptadores de Salida (`infrastructure/adapters/out/`):** Repositorios PostgreSQL, adaptadores de Redis o drivers específicos.
+
 ---
 
-## 5. CÓDIGO DE PRODUCCIÓN LISTO PARA IMPLEMENTAR
+## 6. ESPECIFICACIÓN DE BASE DE DATOS (DDL, ÍNDICES Y POLÍTICAS RLS)
+
+```sql
+-- 8. BODEGAS
+CREATE TABLE warehouses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    code VARCHAR(20) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    CONSTRAINT uq_tenant_warehouse_code UNIQUE (tenant_id, code)
+);
+
+-- 9. PRODUCTOS MAESTROS (CON UNIDADES FRACCIONARIAS)
+CREATE TABLE products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    sku VARCHAR(50) NOT NULL,
+    barcode VARCHAR(50),
+    name VARCHAR(150) NOT NULL,
+    category VARCHAR(50) DEFAULT 'GENERAL',
+    unit_of_measure VARCHAR(20) DEFAULT 'UNIDAD', -- 'UNIDAD', 'METRO', 'KILO', 'LITRO', 'BULTO'
+    cost_price NUMERIC(15, 4) NOT NULL DEFAULT 0.0000,
+    sale_price NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+    wholesale_price NUMERIC(15, 2),
+    tax_rate NUMERIC(5, 2) DEFAULT 0.19,
+    min_stock_alert NUMERIC(12, 3) DEFAULT 5.000,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_tenant_product_sku UNIQUE (tenant_id, sku)
+);
+
+-- 10. SALDOS DE INVENTARIO EN BODEGA (STOCK QUANTS)
+CREATE TABLE stock_quants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+    quantity_on_hand NUMERIC(12, 3) NOT NULL DEFAULT 0.000,
+    reserved_quantity NUMERIC(12, 3) NOT NULL DEFAULT 0.000,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_tenant_prod_warehouse UNIQUE (tenant_id, product_id, warehouse_id)
+);
+
+-- 11. KARDEX INMUTABLE (STOCK MOVES)
+CREATE TABLE stock_moves (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+    warehouse_id UUID NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+    move_type VARCHAR(20) NOT NULL CHECK (move_type IN ('PURCHASE_RECEIPT', 'SALE_DISPATCH', 'TRANSFER_IN', 'TRANSFER_OUT', 'SHRINKAGE_LOSS', 'VOID_RETURN')),
+    quantity NUMERIC(12, 3) NOT NULL CHECK (quantity > 0),
+    unit_cost NUMERIC(15, 4) NOT NULL,
+    total_cost NUMERIC(15, 2) GENERATED ALWAYS AS (ROUND(quantity * unit_cost, 2)) STORED,
+    previous_stock NUMERIC(12, 3) NOT NULL,
+    new_stock NUMERIC(12, 3) NOT NULL,
+    reference_document VARCHAR(100),
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE warehouses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_quants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_moves ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE warehouses FORCE ROW LEVEL SECURITY;
+ALTER TABLE products FORCE ROW LEVEL SECURITY;
+ALTER TABLE stock_quants FORCE ROW LEVEL SECURITY;
+ALTER TABLE stock_moves FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation_warehouses ON warehouses FOR ALL USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+CREATE POLICY tenant_isolation_products ON products FOR ALL USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+CREATE POLICY tenant_isolation_quants ON stock_quants FOR ALL USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+CREATE POLICY tenant_isolation_moves ON stock_moves FOR ALL USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+```
+
+---
+
+## 7. ESPECIFICACIÓN VISUAL Y CROQUIS DE PANTALLA (WIREFRAMES ASCII)
+
+```
+Croquis: Gestion Multi-Bodega y Kardex Inmutable (CPP)
++---------------------------------------------------------------------------------------------------------+
+| GESTION MULTI-BODEGA Y KARDEX INMUTABLE (CPP)                                                            |
++---------------------------------------------------------------------------------------------------------+
+| Bodega Activa: [ Bodega Principal Centro (BOD-01) v ]  |  [ + Nuevo Producto ]  [ Traslado ]  [ Merma ] |
++---------------------------------------------------------------------------------------------------------+
+| SKU      | CODIGO BARRAS | PRODUCTO               | UNIDAD | COSTO CPP  | PRECIO DET | EXISTENCIA | ESTADO    |
++----------+---------------+------------------------+--------+------------+------------+------------+-----------+
+| CEM-001  | 7701234567890 | Cemento Gris Argos     | BULTO  | $ 24.500   | $ 32.000   |    145.000 | NORMAL    |
+| CAB-008  | 7701234567891 | Cable Cobre THHN #12   | METRO  | $  3.100   | $  4.200   |    850.500 | NORMAL    |
+| PNT-034  | 7701234567892 | Pintura Vinilo Blanco  | GALON  | $ 42.000   | $ 58.000   |      4.000 | BAJO STOCK|
+| VAR-004  | 7701234567893 | Varilla Corrugada 1/2  | UNIDAD | $ 14.200   | $ 18.000   |     82.000 | NORMAL    |
++----------+---------------+------------------------+--------+------------+------------+------------+-----------+
+| HISTORIAL DE KARDEX: Cemento Gris Argos (CEM-001)                                                        |
+| Fecha        | Tipo Movimiento    | Doc Ref     | Cantidad    | Costo Unit   | Saldo Fisico | Saldo Valor |
+| 2026-09-24   | COMPRA_RECEPCION   | FAC-9821    | +100 bultos | $ 24.000.00  | 170.000 bult | $4.080.000  |
+| 2026-09-25   | VENTA_POS          | POS-000412  |  -25 bultos | $ 24.500.00  | 145.000 bult | $3.552.500  |
++---------------------------------------------------------------------------------------------------------+
+```
+
+---
+
+## 8. CÓDIGO Y LÓGICA DE PRODUCCIÓN DE REFERENCIA
 
 ```typescript
-// apps/api/src/modules/inventory/inventory.service.ts
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { DataSource, QueryRunner } from 'typeorm';
+// Formula Matematica del Costo Promedio Ponderado (CPP)
 import Decimal from 'decimal.js';
 
-@Injectable()
-export class InventoryService {
-  constructor(private readonly dataSource: DataSource) {}
+export function calculateNewWeightedAverageCost(
+  currentStock: number,
+  currentUnitCost: number,
+  incomingQuantity: number,
+  incomingUnitCost: number
+): number {
+  const stockAct = new Decimal(currentStock);
+  const costAct = new Decimal(currentUnitCost);
+  const qtyIn = new Decimal(incomingQuantity);
+  const costIn = new Decimal(incomingUnitCost);
 
-  async dispatchSaleItems(
-    queryRunner: QueryRunner,
-    tenantId: string,
-    warehouseId: string,
-    items: Array<{ productId: string; quantity: number }>,
-    invoiceNumber: string,
-    userId: string
-  ): Promise<number> {
-    let totalInventoryCost = new Decimal(0);
+  const totalCurrentValue = stockAct.times(costAct);
+  const totalIncomingValue = qtyIn.times(costIn);
+  const newTotalStock = stockAct.plus(qtyIn);
 
-    for (const item of items) {
-      // Bloqueo estricto para evitar condiciones de carrera
-      const quants = await queryRunner.query(
-        `SELECT id, quantity_on_hand FROM stock_quants 
-         WHERE tenant_id = $1 AND product_id = $2 AND warehouse_id = $3
-         FOR UPDATE`,
-        [tenantId, item.productId, warehouseId]
-      );
+  if (newTotalStock.isZero()) return currentUnitCost;
 
-      if (quants.length === 0) {
-        throw new BadRequestException(`El producto ${item.productId} no esta habilitado en esta bodega`);
-      }
-
-      const currentStock = new Decimal(quants[0].quantity_on_hand);
-      const requestedQty = new Decimal(item.quantity);
-
-      if (currentStock.lessThan(requestedQty)) {
-        throw new BadRequestException(
-          `Stock insuficiente. Disponible: ${currentStock.toFixed(3)}, Solicitado: ${requestedQty.toFixed(3)}`
-        );
-      }
-
-      const product = await queryRunner.query(
-        `SELECT cost_price FROM products WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, item.productId]
-      );
-
-      const unitCost = new Decimal(product[0].cost_price);
-      const moveCost = unitCost.times(requestedQty);
-      totalInventoryCost = totalInventoryCost.plus(moveCost);
-
-      const newStock = currentStock.minus(requestedQty);
-
-      await queryRunner.query(
-        `UPDATE stock_quants SET quantity_on_hand = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [newStock.toNumber(), quants[0].id]
-      );
-
-      await queryRunner.query(
-        `INSERT INTO stock_moves (
-          tenant_id, product_id, warehouse_id, move_type, quantity,
-          unit_cost, previous_stock, new_stock, reference_document, created_by
-        ) VALUES ($1, $2, $3, 'SALE_DISPATCH', $4, $5, $6, $7, $8, $9)`,
-        [
-          tenantId,
-          item.productId,
-          warehouseId,
-          requestedQty.toNumber(),
-          unitCost.toNumber(),
-          currentStock.toNumber(),
-          newStock.toNumber(),
-          invoiceNumber,
-          userId,
-        ]
-      );
-    }
-
-    return totalInventoryCost.toNumber();
-  }
-
-  async receivePurchaseItems(
-    queryRunner: QueryRunner,
-    tenantId: string,
-    warehouseId: string,
-    items: Array<{ productId: string; quantity: number; unitCost: number }>,
-    supplierInvoice: string,
-    userId: string
-  ): Promise<void> {
-    for (const item of items) {
-      const product = await queryRunner.query(
-        `SELECT cost_price FROM products WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-        [tenantId, item.productId]
-      );
-
-      const quants = await queryRunner.query(
-        `SELECT id, quantity_on_hand FROM stock_quants 
-         WHERE tenant_id = $1 AND product_id = $2 AND warehouse_id = $3
-         FOR UPDATE`,
-        [tenantId, item.productId, warehouseId]
-      );
-
-      const currentQty = quants.length > 0 ? new Decimal(quants[0].quantity_on_hand) : new Decimal(0);
-      const currentCost = new Decimal(product[0].cost_price);
-
-      const incomingQty = new Decimal(item.quantity);
-      const incomingCost = new Decimal(item.unitCost);
-
-      // Formula Matematica de Costo Promedio Ponderado (CPP)
-      // Nuevo CPP = ((Stock_Actual * Costo_Actual) + (Cantidad_Entrante * Costo_Entrante)) / (Stock_Actual + Cantidad_Entrante)
-      const currentTotalVal = currentQty.times(currentCost);
-      const incomingTotalVal = incomingQty.times(incomingCost);
-      const newTotalQty = currentQty.plus(incomingQty);
-
-      let newCpp = incomingCost;
-      if (newTotalQty.greaterThan(0)) {
-        newCpp = currentTotalVal.plus(incomingTotalVal).dividedBy(newTotalQty);
-      }
-
-      await queryRunner.query(
-        `UPDATE products SET cost_price = $1 WHERE id = $2`,
-        [newCpp.toNumber(), item.productId]
-      );
-
-      if (quants.length > 0) {
-        await queryRunner.query(
-          `UPDATE stock_quants SET quantity_on_hand = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-          [newTotalQty.toNumber(), quants[0].id]
-        );
-      } else {
-        await queryRunner.query(
-          `INSERT INTO stock_quants (tenant_id, product_id, warehouse_id, quantity_on_hand)
-           VALUES ($1, $2, $3, $4)`,
-          [tenantId, item.productId, warehouseId, newTotalQty.toNumber()]
-        );
-      }
-
-      await queryRunner.query(
-        `INSERT INTO stock_moves (
-          tenant_id, product_id, warehouse_id, move_type, quantity,
-          unit_cost, previous_stock, new_stock, reference_document, created_by
-        ) VALUES ($1, $2, $3, 'PURCHASE_RECEIPT', $4, $5, $6, $7, $8, $9)`,
-        [
-          tenantId,
-          item.productId,
-          warehouseId,
-          incomingQty.toNumber(),
-          incomingCost.toNumber(),
-          currentQty.toNumber(),
-          newTotalQty.toNumber(),
-          supplierInvoice,
-          userId,
-        ]
-      );
-    }
-  }
+  const newCpp = totalCurrentValue.plus(totalIncomingValue).dividedBy(newTotalStock);
+  return Number(newCpp.toFixed(4));
 }
 ```
 
 ---
 
-## 6. CÓMO PRUEBAN SU TRABAJO DE FORMA DESACOPLADA
-En DBeaver ejecuten una consulta para ver cómo cambian el stock y el CPP tras registrar una compra simulada:
-```sql
-SELECT p.sku, p.name, p.cost_price, sq.quantity_on_hand 
-FROM products p
-JOIN stock_quants sq ON sq.product_id = p.id
-WHERE p.sku = 'CEM-001';
-```
+## 9. DEFINITION OF DONE (DoD) Y DEMOSTRACIÓN EN VIVO (SALA 121)
 
----
+Al momento de sustentar ante el docente titular Anderson Stiven Moncayo Bermeo, su escuadrón debe demostrar en vivo en menos de 60 segundos:
 
-## 7. CHECKLIST PARA SUSTENTAR AL PROFESOR ANDERSON
-Cuando el profesor se acerque a su puesto, deben mostrarle en menos de 60 segundos:
-- [ ] La tabla `stock_moves` mostrando movimientos inmutables con stock anterior y stock nuevo calculados con precisión.
-- [ ] Demostrar el recálculo matemático del Costo Promedio Ponderado al ingresar un producto a un precio mayor que el existente.
-
+- [ ] Registrar una compra con nuevo costo y demostrar que el CPP en products se recalcula exactamente segun la formula matematica.
+- [ ] Demostrar la inmutabilidad de stock_moves (cero UPDATE y cero DELETE).
+- [ ] Ejecutar una prueba de dos ventas simultaneas para el ultimo item en stock y validar que SELECT FOR UPDATE bloquea una de ellas y evita inventario negativo.
+- [ ] Verificar soporte nativo de cantidades fraccionarias (ejemplo: 2.750 metros de cable o 1.500 kilos de puntillas).
