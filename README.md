@@ -7,7 +7,7 @@
 **Docente Titular y Arquitecto Principal:** Anderson Stiven Moncayo Bermeo  
 **Espacio de Prácticas:** Sala de Cómputo 121 - Campus UniPutumayo  
 **Población Asignada:** 4 Estudiantes (Scrum Autónomo)  
-**Tipo de Entregable:** API Backend Autónoma (NestJS / TypeScript / PostgreSQL 16 con RLS)  
+**Tipo de Entregable:** API Backend Autónoma (NestJS / TypeScript / PostgreSQL 16 con RLS / Decimal.js)  
 
 ---
 
@@ -21,6 +21,10 @@ Desarrollar la API del motor de inventario multi-bodega con soporte nativo para 
 3. **Delimitación Fiscal:** El sistema gestiona Facturación Comercial Interna, Comprobantes POS y Recibos de Caja. No incluye facturación electrónica DIAN externa.
 4. **Aislamiento Multi-Tenant Estricto:** Forzado en PostgreSQL 16 con Row Level Security (RLS) e inyección obligatoria de SET LOCAL app.current_tenant_id.
 
+### Estrategia de Persistencia Centralizada Multi-Módulo
+El sistema SaaS Contable opera con una **única base de datos PostgreSQL 16 centralizada** y un cluster de **Redis 7** orquestados por el Escuadrón 8 (DevOps). El aislamiento entre empresas es total y criptográfico mediante **Row Level Security (RLS)** forzado con `SET LOCAL app.current_tenant_id`.
+Cada escuadrón es dueño absoluto del diseño y evolución de sus tablas asignadas, pero la co-ubicación física en la misma base de datos garantiza transacciones ACID atómicas, consistencia referencial y cero latencia de replicación entre módulos contables.
+
 ---
 
 ## 2. INSTRUCCIONES DE CLONACIÓN Y ARRANQUE DE SU REPOSITORIO
@@ -28,28 +32,30 @@ Desarrollar la API del motor de inventario multi-bodega con soporte nativo para 
 Cada integrante de este escuadrón debe clonar su propio repositorio de trabajo independiente:
 
 ```bash
-# 1. Clonar el repositorio oficial de su escuadron
-git clone https://github.com/saas-uniputumayo/squad3_inventory_kardex_cpp.git
-cd squad3_inventory_kardex_cpp
-
-# 2. Configurar variables de entorno locales
 cp .env.example .env
-
-# 3. Instalar dependencias del proyecto
 pnpm install
-
-# 4. Iniciar el servicio en modo desarrollo
 pnpm dev
+```
+
+### Archivo de Variables de Entorno (`.env.example`)
+Asegúrese de contar con las siguientes variables configuradas en su archivo local `.env`:
+
+```env
+PORT=3003
+NODE_ENV=development
+DATABASE_URL=postgresql://saas_admin:saas_secure_password_2026@localhost:5432/saas_contable_db
+AUTH_SERVICE_URL=http://localhost:3001
+CORS_ORIGINS=http://localhost:3000
 ```
 
 ---
 
 ## 3. ROLES INTERNOS DEL ESCUADRÓN (SCRUM AUTÓNOMO - 4 ESTUDIANTES)
 
-* **Squad Lead & Scrum Master:**  Coordina los contratos de salida de stock con los líderes de Ventas (E4/E5) y las recepciones físicas con Compras (E7), moderando el Daily.
-* **Kardex & Math Specialist:**  Implementa la fórmula matemática del Costo Promedio Ponderado (CPP) y el registro inmutable de movimientos en stock_moves.
-* **Catalog & Multi-Warehouse Specialist:**  Modela productos, unidades de medida fraccionarias, catálogo de bodegas y traslados seguros entre sucursales.
-* **QA & Concurrency Specialist:**  Escribe pruebas de concurrencia pesimista (SELECT FOR UPDATE) para validar que dos ventas simultáneas sobre el último ítem disponible no generen inventario negativo.
+* **Squad Lead & Scrum Master:**  Coordina los contratos de salida de stock con los lideres de Ventas (E4/E5) y las recepciones fisicas con Compras (E7), moderando el Daily.
+* **Kardex & Math Specialist:**  Implementa la formula matematica del Costo Promedio Ponderado (CPP) y el registro inmutable de movimientos en stock_moves.
+* **Catalog & Multi-Warehouse Specialist:**  Modela productos, unidades de medida fraccionarias, catalogo de bodegas y traslados seguros entre sucursales.
+* **QA & Concurrency Specialist:**  Escribe pruebas de concurrencia pesimista (SELECT FOR UPDATE) para validar que dos ventas simultaneas sobre el ultimo item disponible no generen inventario negativo.
 
 ---
 
@@ -58,18 +64,19 @@ pnpm dev
 Este repositorio opera como una API o aplicación completamente autónoma. Una vez completada, sus endpoints serán compartidos y consumidos por los otros escuadrones:
 
 ### A. Endpoints y Servicios que este Escuadrón EXPONE para los demás
-* `GET /api/v1/inventory/products`:  Catalogo de productos con existencias en tiempo real, precios de venta y filtro por SKU, nombre o codigo de barras.
-* `POST /api/v1/inventory/products`:  Creacion de producto maestro con definicion de unidad fraccionaria (kg, m, lt, un, bulto).
-* `PATCH /api/v1/inventory/products/`: id
-* `GET /api/v1/inventory/warehouses`:  Listado de bodegas de almacenamiento de la sucursal.
-* `POST /api/v1/inventory/moves/dispatch`:  Despacho atomico de inventario por venta POS con bloqueo pesimista (SELECT FOR UPDATE). Retorna costo unitario exacto.
-* `POST /api/v1/inventory/moves/receive`:  Recepcion fisica de mercancia por compra a proveedor; recalcula automaticamente el Costo Promedio Ponderado (CPP).
-* `POST /api/v1/inventory/moves/reverse`:  Reversa una salida por anulacion auditada y reingresa el stock sin borrar el historico.
-* `POST /api/v1/inventory/transfers`:  Traslado formal de mercancia entre dos bodegas autorizadas.
-* `GET /api/v1/inventory/kardex/`: productId
+* `GET /api/v1/inventory/products`: Catalogo de productos con existencias en tiempo real, precios de venta y filtro por SKU, nombre o codigo de barras.
+* `POST /api/v1/inventory/products`: Creacion de producto maestro con definicion de unidad fraccionaria (kg, m, lt, un, bulto).
+* `PATCH /api/v1/inventory/products/:id`: Actualizacion de precios de venta, costos base y umbrales de stock minimo.
+* `GET /api/v1/inventory/warehouses`: Listado de bodegas de almacenamiento habilitadas por sucursal.
+* `POST /api/v1/inventory/moves/dispatch`: Despacho atomico de inventario por venta POS con bloqueo pesimista (SELECT FOR UPDATE). Retorna costo unitario exacto.
+* `POST /api/v1/inventory/moves/receive`: Recepcion fisica de mercancia por compra a proveedor; recalcula automaticamente el Costo Promedio Ponderado (CPP).
+* `POST /api/v1/inventory/moves/reverse`: Reversa una salida por anulacion auditada y reingresa el stock sin borrar el historico.
+* `POST /api/v1/inventory/transfers`: Traslado formal de mercancia entre dos bodegas autorizadas con documento de remision.
+* `GET /api/v1/inventory/kardex/:productId`: Historial cronologico inmutable de movimientos de kardex valorizado para un producto.
+* `GET /api/v1/inventory/stock-alerts`: Listado de productos con stock actual inferior al umbral minimo configurado.
 
 ### B. Endpoints y Servicios que este Escuadrón CONSUME de los demás
-* GET /api/v1/auth/me (Escuadron 1): Validacion de sesion y tenantId.
+* GET /api/v1/auth/me (Escuadron 1): Validacion de sesion y tenantId en cada operacion de bodega.
 
 ---
 
@@ -259,3 +266,46 @@ Al momento de sustentar ante el docente titular Anderson Stiven Moncayo Bermeo, 
 - [ ] Demostrar la inmutabilidad de stock_moves (cero UPDATE y cero DELETE).
 - [ ] Ejecutar una prueba de dos ventas simultaneas para el ultimo item en stock y validar que SELECT FOR UPDATE bloquea una de ellas y evita inventario negativo.
 - [ ] Verificar soporte nativo de cantidades fraccionarias (ejemplo: 2.750 metros de cable o 1.500 kilos de puntillas).
+
+---
+
+## 10. DIAGRAMA DE SECUENCIA Y ORQUESTACIÓN TRANSACCIONAL
+
+```
+
+Secuencia de Despacho con Bloqueo Pesimista (SELECT FOR UPDATE) anti stock-negativo:
++-----------+            +-------------------+            +---------------+            +------------------+
+| E4/E5 POS |            | E3: Inventory API |            | PostgreSQL 16 |            | Fila stock_quant |
++-----+-----+            +---------+---------+            +-------+-------+            +--------+---------+
+      |                            |                              |                             |
+      | 1. POST /moves/dispatch    |                              |                             |
+      |--------------------------->|                              |                             |
+      |                            | 2. BEGIN TRANSACTION         |                             |
+      |                            |----------------------------->|                             |
+      |                            | 3. SELECT FOR UPDATE (Bloqueo pesimista fila)              |
+      |                            |----------------------------------------------------------->| (LOCKED)
+      |                            | 4. Si quantity_on_hand < qty_solicitada:                   |
+      |                            |    ROLLBACK y responde HTTP 409 Conflicto Stock            |
+      |                            | 5. Si hay stock suficiente:                                |
+      |                            |    Deduce saldo: qty_on_hand - qty_solicitada              |
+      |                            |----------------------------------------------------------->|
+      |                            | 6. Inserta movimiento inmutable en stock_moves             |
+      |                            |----------------------------->|                             |
+      |                            | 7. COMMIT TRANSACTION                                      |
+      |                            |----------------------------------------------------------->| (UNLOCKED)
+      |<---------------------------| 8. Retorna HTTP 201 + Costo Unitario Exacto para E2        |
++-----+-----+            +-------------------+            +---------------+            +------------------+
+
+```
+
+---
+
+## 11. GLOSARIO DE NEGOCIO Y CONCEPTOS CLAVE
+
+* **Partida Doble (NIIF):** Principio contable universal donde todo registro financiero afecta al menos dos cuentas contables. La suma de los Débitos debe ser idéntica a la suma de los Créditos (`Debitos - Creditos == 0.00`). No existe deudor sin acreedor.
+* **PUC (Plan Único de Cuentas):** Catálogo jerárquico oficial que codifica las cuentas en Colombia: Clase 1 (Activo), Clase 2 (Pasivo), Clase 3 (Patrimonio), Clase 4 (Ingresos), Clase 5 (Gastos), Clase 6 (Costos de Ventas).
+* **CPP (Costo Promedio Ponderado):** Método de valoración de inventarios donde el costo unitario de un producto se recalcula en cada compra entrante: `Nuevo_CPP = (Saldo_Valor_Actual + Costo_Total_Entrada) / (Saldo_Cantidad_Actual + Cantidad_Entrada)`.
+* **RLS (Row Level Security):** Característica de seguridad en PostgreSQL que filtra las filas visibles para cada consulta según una variable de sesión (`app.current_tenant_id`), impidiendo que una empresa acceda a datos de otra aún compartiendo la misma tabla.
+* **Fiado (Crédito Comercial a Clientes):** Venta realizada a un cliente de confianza con plazo de pago diferido. Requiere validación de cupo máximo autorizado y registro en la cuenta contable 130505 (Clientes Nacionales).
+* **Idempotencia (`X-Idempotency-Key`):** Garantía arquitectónica donde una misma petición HTTP repetida múltiples veces (por cortes de red o reintentos) solo se ejecuta una única vez en la base de datos, evitando dobles cobros o dobles salidas de inventario.
+* **ESC/POS:** Lenguaje de comandos binarios estandarizado por Epson para controlar impresoras térmicas de tickets (corte de papel, alineación, negrita y apertura de gaveta monedero).
