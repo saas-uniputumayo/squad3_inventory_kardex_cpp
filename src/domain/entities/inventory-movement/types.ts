@@ -1,0 +1,31 @@
+export enum MovementType {
+    PURCHASE_RECEIPT = 'PURCHASE_RECEIPT',
+    SALE_DISPATCH = 'SALE_DISPATCH',
+    TRANSFER_IN = 'TRANSFER_IN',
+    TRANSFER_OUT = 'TRANSFER_OUT',
+    SHRINKAGE_LOSS = 'SHRINKAGE_LOSS',
+    VOID_RETURN = 'VOID_RETURN',
+}
+
+export enum MovementStatus {
+    POSTED = 'POSTED',
+    REVERSED = 'REVERSED',
+}
+
+export enum MovementSource {
+    POS = 'POS',
+    PURCHASE = 'PURCHASE',
+    TRANSFER = 'TRANSFER',
+    ADJUSTMENT = 'ADJUSTMENT',
+    SYSTEM = 'SYSTEM',
+}
+
+export enum ReferenceType {
+    POS_SALE = 'POS_SALE',
+    PURCHASE = 'PURCHASE',
+    TRANSFER = 'TRANSFER',
+    STOCK_ADJUSTMENT = 'STOCK_ADJUSTMENT',
+    STOCK_COUNT = 'STOCK_COUNT',
+    INVENTORY_REVERSAL = 'INVENTORY_REVERSAL',
+    SYSTEM = 'SYSTEM',
+}
