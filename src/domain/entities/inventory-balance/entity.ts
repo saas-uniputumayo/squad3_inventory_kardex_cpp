@@ -7,13 +7,14 @@ import {
     QuantityVO,
 } from '../../value-objects/quantity.vo';
 import { UnitCostVO } from '../../value-objects/unit-cost.vo';
+import { InventoryPrecisionPolicy } from '../../policy/precision.policy';
 
 export interface CreateInventoryBalanceProps {
     id: string;
     tenantId: string;
     warehouseId: string;
     productId: string;
-    variantId?: string;
+    variantId: string;
     unitOfMeasureId: string;
     allowsFraction: boolean;
     decimalPlaces: number;
@@ -22,7 +23,7 @@ export interface CreateInventoryBalanceProps {
     reservedQuantity?: Decimal.Value;
     averageCost?: Decimal.Value;
     inventoryValue?: Decimal.Value;
-    version?: number;
+    version?: number | bigint;
 }
 
 export interface InventoryBalanceProps {
@@ -30,7 +31,7 @@ export interface InventoryBalanceProps {
     tenantId: string;
     warehouseId: string;
     productId: string;
-    variantId?: string;
+    variantId: string;
     unitOfMeasureId: string;
     allowsFraction: boolean;
     decimalPlaces: number;
@@ -39,7 +40,7 @@ export interface InventoryBalanceProps {
     reservedQuantity: QuantityVO;
     averageCost: UnitCostVO;
     inventoryValue: MoneyVO;
-    version: number;
+    version: number | bigint;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -50,7 +51,7 @@ export class InventoryBalance {
         private readonly tenantId: string,
         private readonly warehouseId: string,
         private readonly productId: string,
-        private readonly variantId: string | undefined,
+        private readonly variantId: string,
         private readonly unitOfMeasureId: string,
         private readonly allowsFraction: boolean,
         private readonly decimalPlaces: number,
@@ -98,9 +99,9 @@ export class InventoryBalance {
             currency,
         );
 
-        const version = props.version ?? 0;
+        const versionNum = props.version !== undefined ? Number(props.version) : 0;
 
-        if (version < 0 || !Number.isInteger(version)) {
+        if (versionNum < 0 || !Number.isInteger(versionNum)) {
             throw new InvalidInventoryBalanceException(
                 'La versión del inventario debe ser un entero no negativo',
             );
@@ -122,7 +123,7 @@ export class InventoryBalance {
             reservedQuantity,
             averageCost,
             inventoryValue,
-            version,
+            versionNum,
             now,
             now,
         );
@@ -153,20 +154,21 @@ export class InventoryBalance {
             quantityRules,
         );
 
+        const currency = props.currency.trim().toUpperCase();
+
         const averageCost = UnitCostVO.create(
             props.averageCost.getAmount(),
-            props.currency,
+            currency,
         );
 
         const inventoryValue = MoneyVO.create(
             props.inventoryValue.getAmount(),
-            props.currency,
+            currency,
         );
 
-        if (
-            props.version < 0 ||
-            !Number.isInteger(props.version)
-        ) {
+        const versionNum = Number(props.version);
+
+        if (versionNum < 0 || !Number.isInteger(versionNum)) {
             throw new InvalidInventoryBalanceException(
                 'La versión del inventario debe ser un entero no negativo',
             );
@@ -181,12 +183,12 @@ export class InventoryBalance {
             props.unitOfMeasureId,
             props.allowsFraction,
             props.decimalPlaces,
-            props.currency.trim().toUpperCase(),
+            currency,
             quantityOnHand,
             reservedQuantity,
             averageCost,
             inventoryValue,
-            props.version,
+            versionNum,
             props.createdAt,
             props.updatedAt,
         );
@@ -200,20 +202,11 @@ export class InventoryBalance {
      * Registra una entrada de inventario y recalcula
      * el costo promedio ponderado (CPP).
      *
-     * Fórmula:
-     *
-     * nuevo CPP =
-     * (
-     *   valor inventario actual
-     *   +
-     *   valor entrada
-     * )
-     * /
-     * (
-     *   cantidad actual
-     *   +
-     *   cantidad entrada
-     * )
+     * Fórmula canónica:
+     * valorRecibido = round(cantidadRecibida × costoUnitario, 4)
+     * nuevoValor = round(valorExistente + valorRecibido, 4)
+     * nuevaCantidad = cantidadExistente + cantidadRecibida
+     * nuevoCPP = round(nuevoValor / nuevaCantidad, 6)
      */
     receive(
         quantity: QuantityVO,
@@ -228,43 +221,32 @@ export class InventoryBalance {
             );
         }
 
-        const currentQuantity =
-            this.quantityOnHand.getAmount();
+        const currentQuantity = this.quantityOnHand.getAmount();
+        const receivedQuantity = quantity.getAmount();
+        const currentInventoryValue = this.inventoryValue.getAmount();
+        const receivedUnitCost = unitCost.getAmount();
 
-        const receivedQuantity =
-            quantity.getAmount();
+        // valorRecibido = round(cantidadRecibida × costoUnitario, 4)
+        const valorRecibido = InventoryPrecisionPolicy.roundInventoryValue(
+            receivedQuantity.mul(receivedUnitCost),
+        );
 
-        const currentInventoryValue =
-            this.inventoryValue.getAmount();
+        // nuevoValor = round(valorExistente + valorRecibido, 4)
+        const nuevoValor = InventoryPrecisionPolicy.roundInventoryValue(
+            currentInventoryValue.plus(valorRecibido),
+        );
 
-        const receivedInventoryValue =
-            unitCost.multiply(receivedQuantity);
+        // nuevaCantidad = cantidadExistente + cantidadRecibida
+        const nuevaCantidad = currentQuantity.plus(receivedQuantity);
 
-        const newQuantity =
-            currentQuantity.plus(receivedQuantity);
+        // nuevoCPP = round(nuevoValor / nuevaCantidad, 6)
+        const nuevoCPP = InventoryPrecisionPolicy.roundUnitCost(
+            nuevoValor.div(nuevaCantidad),
+        );
 
-        const newInventoryValue =
-            currentInventoryValue.plus(
-                receivedInventoryValue,
-            );
-
-        const newAverageCost =
-            newInventoryValue.div(newQuantity);
-
-        this.quantityOnHand =
-            this.createQuantity(newQuantity);
-
-        this.inventoryValue =
-            MoneyVO.create(
-                newInventoryValue,
-                this.currency,
-            );
-
-        this.averageCost =
-            UnitCostVO.create(
-                newAverageCost,
-                this.currency,
-            );
+        this.quantityOnHand = this.createQuantity(nuevaCantidad);
+        this.inventoryValue = MoneyVO.create(nuevoValor, this.currency);
+        this.averageCost = UnitCostVO.create(nuevoCPP, this.currency);
 
         this.touch();
         this.incrementVersion();
@@ -275,11 +257,16 @@ export class InventoryBalance {
     /**
      * Registra una salida de inventario.
      *
-     * El costo de la salida utiliza el CPP vigente.
-     * La salida NO modifica el CPP.
+     * El costo de salida utiliza el CPP actual:
+     * valorSalida = round(cantidadSalida × CPP, 4)
+     * nuevoValor = round(valorExistente - valorSalida, 4)
+     * nuevaCantidad = cantidadExistente - cantidadSalida
      *
-     * Retorna el valor total del costo de inventario
-     * consumido por la salida.
+     * El CPP permanece igual mientras haya existencia.
+     * Si la existencia llega exactamente a cero:
+     * quantity = 0, inventoryValue = 0, averageCost = 0.
+     *
+     * Retorna el valor total del costo de inventario consumido por la salida.
      */
     dispatch(
         quantity: QuantityVO,
@@ -298,39 +285,33 @@ export class InventoryBalance {
             );
         }
 
-        const dispatchQuantity =
-            quantity.getAmount();
+        const dispatchQuantity = quantity.getAmount();
+        const currentCPP = this.averageCost.getAmount();
 
-        const dispatchValue =
-            this.averageCost.multiply(
-                dispatchQuantity,
-            );
+        // valorSalida = round(cantidadSalida × CPP, 4)
+        const dispatchValueAmount = InventoryPrecisionPolicy.roundInventoryValue(
+            dispatchQuantity.mul(currentCPP),
+        );
 
-        const newQuantity =
-            this.quantityOnHand
-                .getAmount()
-                .minus(dispatchQuantity);
-
-        const newInventoryValue =
-            this.inventoryValue
-                .getAmount()
-                .minus(dispatchValue);
-
-        this.quantityOnHand =
-            this.createQuantity(newQuantity);
+        const newQuantity = this.quantityOnHand.getAmount().minus(dispatchQuantity);
 
         if (newQuantity.isZero()) {
-            this.inventoryValue =
-                MoneyVO.create(
-                    0,
-                    this.currency,
-                );
+            this.quantityOnHand = this.createQuantity(0);
+            this.inventoryValue = MoneyVO.create(0, this.currency);
+            this.averageCost = UnitCostVO.create(0, this.currency);
         } else {
-            this.inventoryValue =
-                MoneyVO.create(
-                    newInventoryValue,
-                    this.currency,
-                );
+            // nuevoValor = round(valorExistente - valorSalida, 4)
+            let newInventoryValue = InventoryPrecisionPolicy.roundInventoryValue(
+                this.inventoryValue.getAmount().minus(dispatchValueAmount),
+            );
+
+            if (newInventoryValue.isNegative()) {
+                newInventoryValue = new Decimal(0);
+            }
+
+            this.quantityOnHand = this.createQuantity(newQuantity);
+            this.inventoryValue = MoneyVO.create(newInventoryValue, this.currency);
+            // El CPP permanece igual mientras aún haya existencia
         }
 
         this.touch();
@@ -338,10 +319,7 @@ export class InventoryBalance {
 
         this.validateState();
 
-        return MoneyVO.create(
-            dispatchValue,
-            this.currency,
-        );
+        return MoneyVO.create(dispatchValueAmount, this.currency);
     }
 
     /**
@@ -364,11 +342,9 @@ export class InventoryBalance {
             );
         }
 
-        const newReservedQuantity =
-            this.reservedQuantity.add(quantity);
+        const newReservedQuantity = this.reservedQuantity.add(quantity);
 
-        this.reservedQuantity =
-            newReservedQuantity;
+        this.reservedQuantity = newReservedQuantity;
 
         this.touch();
         this.incrementVersion();
@@ -390,20 +366,13 @@ export class InventoryBalance {
             );
         }
 
-        if (
-            quantity.isGreaterThan(
-                this.reservedQuantity,
-            )
-        ) {
+        if (quantity.isGreaterThan(this.reservedQuantity)) {
             throw new InvalidInventoryBalanceException(
                 'La cantidad a liberar no puede superar la cantidad reservada',
             );
         }
 
-        this.reservedQuantity =
-            this.reservedQuantity.subtract(
-                quantity,
-            );
+        this.reservedQuantity = this.reservedQuantity.subtract(quantity);
 
         this.touch();
         this.incrementVersion();
@@ -411,73 +380,57 @@ export class InventoryBalance {
         this.validateState();
     }
 
+    release(quantity: QuantityVO): void {
+        this.releaseReservation(quantity);
+    }
+
     /**
-     * Ajusta directamente la existencia física
-     * y el valor total del inventario.
+     * Ajusta directamente la existencia física y el valor total del inventario.
      *
-     * Este método está pensado para ajustes de inventario,
-     * conteos físicos y mermas.
-     *
-     * El nuevo CPP se calcula como:
-     *
-     * nuevo CPP = nuevo valor / nueva cantidad
+     * Utilizado para ajustes de inventario, conteos físicos y mermas.
+     * Si quantity > 0:
+     *   CPP = round(inventoryValue / quantity, 6)
+     * Si quantity = 0:
+     *   inventoryValue = 0
+     *   averageCost = 0
      */
     adjust(
         newQuantity: QuantityVO,
         newInventoryValue: MoneyVO,
     ): void {
         this.ensureSameUnit(newQuantity);
-        this.ensureSameCurrency(
-            newInventoryValue,
+        this.ensureSameCurrency(newInventoryValue);
+
+        const quantity = newQuantity.getAmount();
+        const value = InventoryPrecisionPolicy.roundInventoryValue(
+            newInventoryValue.getAmount(),
         );
 
-        const quantity =
-            newQuantity.getAmount();
-
-        const value =
-            newInventoryValue.getAmount();
-
-        if (
-            quantity.isZero() &&
-            !value.isZero()
-        ) {
+        if (quantity.isZero() && !value.isZero()) {
             throw new InvalidInventoryBalanceException(
                 'Una existencia de cero no puede tener valor de inventario',
             );
         }
 
-        if (
-            newQuantity.isLessThan(
-                this.reservedQuantity,
-            )
-        ) {
+        if (newQuantity.isLessThan(this.reservedQuantity)) {
             throw new InvalidInventoryBalanceException(
                 'La existencia ajustada no puede ser menor que la cantidad reservada',
             );
         }
 
-        let newAverageCost =
-            UnitCostVO.create(
-                0,
-                this.currency,
-            );
+        let newAverageCost: Decimal;
 
-        if (!quantity.isZero()) {
-            newAverageCost =
-                UnitCostVO.create(
-                    value.div(quantity),
-                    this.currency,
-                );
+        if (quantity.isZero()) {
+            newAverageCost = new Decimal(0);
+        } else {
+            newAverageCost = InventoryPrecisionPolicy.roundUnitCost(
+                value.div(quantity),
+            );
         }
 
-        this.quantityOnHand =
-            newQuantity;
-
-        this.inventoryValue =
-            newInventoryValue;
-
-        this.averageCost =
-            newAverageCost;
+        this.quantityOnHand = newQuantity;
+        this.inventoryValue = MoneyVO.create(value, this.currency);
+        this.averageCost = UnitCostVO.create(newAverageCost, this.currency);
 
         this.touch();
         this.incrementVersion();
@@ -487,7 +440,6 @@ export class InventoryBalance {
 
     /**
      * Indica si existe suficiente stock disponible.
-     *
      * Disponible = existencia física - reservado.
      */
     hasStock(
@@ -522,7 +474,7 @@ export class InventoryBalance {
         return this.productId;
     }
 
-    getVariantId(): string | undefined {
+    getVariantId(): string {
         return this.variantId;
     }
 
@@ -543,6 +495,10 @@ export class InventoryBalance {
     }
 
     getQuantityOnHand(): QuantityVO {
+        return this.quantityOnHand;
+    }
+
+    getQuantity(): QuantityVO {
         return this.quantityOnHand;
     }
 
@@ -585,40 +541,34 @@ export class InventoryBalance {
 
     private getQuantityRules(): QuantityRules {
         return {
-            unitOfMeasureId:
-                this.unitOfMeasureId,
-            allowsFraction:
-                this.allowsFraction,
-            decimalPlaces:
-                this.decimalPlaces,
+            unitOfMeasureId: this.unitOfMeasureId,
+            allowsFraction: this.allowsFraction,
+            decimalPlaces: this.decimalPlaces,
         };
     }
 
     private ensureSameUnit(
         quantity: QuantityVO,
     ): void {
-        if (
-            quantity.getUnitOfMeasureId() !==
-            this.unitOfMeasureId
-        ) {
+        if (!quantity) {
+            throw new InvalidInventoryBalanceException(
+                'La cantidad es obligatoria',
+            );
+        }
+
+        if (quantity.getUnitOfMeasureId() !== this.unitOfMeasureId) {
             throw new InvalidInventoryBalanceException(
                 'La cantidad utiliza una unidad de medida diferente a la del inventario',
             );
         }
 
-        if (
-            quantity.getAllowsFraction() !==
-            this.allowsFraction
-        ) {
+        if (quantity.getAllowsFraction() !== this.allowsFraction) {
             throw new InvalidInventoryBalanceException(
                 'La cantidad utiliza una configuración de fraccionamiento diferente a la del inventario',
             );
         }
 
-        if (
-            quantity.getDecimalPlaces() !==
-            this.decimalPlaces
-        ) {
+        if (quantity.getDecimalPlaces() !== this.decimalPlaces) {
             throw new InvalidInventoryBalanceException(
                 'La cantidad utiliza una precisión decimal diferente a la del inventario',
             );
@@ -628,10 +578,13 @@ export class InventoryBalance {
     private ensureSameCurrency(
         value: UnitCostVO | MoneyVO,
     ): void {
-        if (
-            value.getCurrency() !==
-            this.currency
-        ) {
+        if (!value) {
+            throw new InvalidInventoryBalanceException(
+                'El valor monetario es obligatorio',
+            );
+        }
+
+        if (value.getCurrency() !== this.currency) {
             throw new InvalidInventoryBalanceException(
                 'La moneda no coincide con la moneda del inventario',
             );
@@ -639,29 +592,21 @@ export class InventoryBalance {
     }
 
     private validateState(): void {
-        if (
-            this.quantityOnHand.getUnitOfMeasureId() !==
-            this.unitOfMeasureId
-        ) {
+        if (this.quantityOnHand.getUnitOfMeasureId() !== this.unitOfMeasureId) {
             throw new InvalidInventoryBalanceException(
                 'La unidad de medida de la existencia no coincide con la del inventario',
             );
         }
 
-        if (
-            this.reservedQuantity.getUnitOfMeasureId() !==
-            this.unitOfMeasureId
-        ) {
+        if (this.reservedQuantity.getUnitOfMeasureId() !== this.unitOfMeasureId) {
             throw new InvalidInventoryBalanceException(
                 'La unidad de medida de la reserva no coincide con la del inventario',
             );
         }
 
         if (
-            this.quantityOnHand.getAllowsFraction() !==
-            this.allowsFraction ||
-            this.reservedQuantity.getAllowsFraction() !==
-            this.allowsFraction
+            this.quantityOnHand.getAllowsFraction() !== this.allowsFraction ||
+            this.reservedQuantity.getAllowsFraction() !== this.allowsFraction
         ) {
             throw new InvalidInventoryBalanceException(
                 'Las reglas de fraccionamiento de las cantidades no coinciden con las del inventario',
@@ -669,131 +614,107 @@ export class InventoryBalance {
         }
 
         if (
-            this.quantityOnHand.getDecimalPlaces() !==
-            this.decimalPlaces ||
-            this.reservedQuantity.getDecimalPlaces() !==
-            this.decimalPlaces
+            this.quantityOnHand.getDecimalPlaces() !== this.decimalPlaces ||
+            this.reservedQuantity.getDecimalPlaces() !== this.decimalPlaces
         ) {
             throw new InvalidInventoryBalanceException(
                 'La precisión decimal de las cantidades no coincide con la del inventario',
             );
         }
 
-        if (
-            this.reservedQuantity.isGreaterThan(
-                this.quantityOnHand,
-            )
-        ) {
+        if (this.reservedQuantity.isGreaterThan(this.quantityOnHand)) {
             throw new InvalidInventoryBalanceException(
                 'La cantidad reservada no puede superar la existencia física',
             );
         }
 
-        this.ensureSameCurrency(
-            this.averageCost,
-        );
+        this.ensureSameCurrency(this.averageCost);
+        this.ensureSameCurrency(this.inventoryValue);
 
-        this.ensureSameCurrency(
-            this.inventoryValue,
-        );
+        const quantity = this.quantityOnHand.getAmount();
+        const inventoryValue = this.inventoryValue.getAmount();
+        const averageCost = this.averageCost.getAmount();
 
-        const quantity =
-            this.quantityOnHand.getAmount();
-
-        const inventoryValue =
-            this.inventoryValue.getAmount();
-
-        const averageCost =
-            this.averageCost.getAmount();
-
-        if (
-            quantity.isZero() &&
-            !inventoryValue.isZero()
-        ) {
-            throw new InvalidInventoryBalanceException(
-                'Una existencia de cero no puede tener valor de inventario',
-            );
-        }
-
-        if (
-            quantity.isZero() &&
-            !averageCost.isZero()
-        ) {
-            throw new InvalidInventoryBalanceException(
-                'Una existencia de cero debe tener costo promedio cero',
-            );
-        }
-
-        if (!quantity.isZero()) {
-            const expectedValue =
-                averageCost.mul(quantity);
-
-            if (
-                !expectedValue.eq(
-                    inventoryValue,
-                )
-            ) {
+        if (quantity.isZero()) {
+            if (!inventoryValue.isZero()) {
                 throw new InvalidInventoryBalanceException(
-                    'El valor del inventario no coincide con la cantidad multiplicada por el costo promedio',
+                    'Una existencia de cero no puede tener valor de inventario',
+                );
+            }
+
+            if (!averageCost.isZero()) {
+                throw new InvalidInventoryBalanceException(
+                    'Una existencia de cero debe tener costo promedio cero',
+                );
+            }
+            // Validación con tolerancia canónica derivada para prevenir falsos positivos o rechazos por redondeo
+            const expectedValue = InventoryPrecisionPolicy.roundInventoryValue(
+                averageCost.mul(quantity),
+            );
+            const tolerance = InventoryPrecisionPolicy.calculateValuationTolerance(quantity);
+
+            if (!InventoryPrecisionPolicy.areValuesEquivalent(expectedValue, inventoryValue, tolerance)) {
+                throw new InvalidInventoryBalanceException(
+                    `El valor del inventario (${inventoryValue.toFixed(4)}) no coincide con la cantidad (${quantity}) multiplicada por el costo promedio (${averageCost.toFixed(6)})`,
                 );
             }
         }
     }
 
-    private static validateIdentity(
-        props: {
-            id: string;
-            tenantId: string;
-            warehouseId: string;
-            productId: string;
-            unitOfMeasureId: string;
-            allowsFraction: boolean;
-            decimalPlaces: number;
-        },
-    ): void {
-        if (!props.id.trim()) {
+    private static validateIdentity(props: {
+        id: string;
+        tenantId: string;
+        warehouseId: string;
+        productId: string;
+        variantId: string;
+        unitOfMeasureId: string;
+        allowsFraction: boolean;
+        decimalPlaces: number;
+    }): void {
+        if (typeof props.id !== 'string' || !props.id.trim()) {
             throw new InvalidInventoryBalanceException(
                 'El identificador del inventario es obligatorio',
             );
         }
 
-        if (!props.tenantId.trim()) {
+        if (typeof props.tenantId !== 'string' || !props.tenantId.trim()) {
             throw new InvalidInventoryBalanceException(
                 'El inventario debe pertenecer a un tenant',
             );
         }
 
-        if (!props.warehouseId.trim()) {
+        if (typeof props.warehouseId !== 'string' || !props.warehouseId.trim()) {
             throw new InvalidInventoryBalanceException(
                 'El inventario debe pertenecer a una bodega',
             );
         }
 
-        if (!props.productId.trim()) {
+        if (typeof props.productId !== 'string' || !props.productId.trim()) {
             throw new InvalidInventoryBalanceException(
                 'El inventario debe pertenecer a un producto',
             );
         }
 
-        if (!props.unitOfMeasureId.trim()) {
+        if (typeof props.variantId !== 'string' || !props.variantId.trim()) {
+            throw new InvalidInventoryBalanceException(
+                'El inventario debe estar asociado a una variante de producto',
+            );
+        }
+
+        if (typeof props.unitOfMeasureId !== 'string' || !props.unitOfMeasureId.trim()) {
             throw new InvalidInventoryBalanceException(
                 'El inventario debe tener una unidad de medida',
             );
         }
 
-        if (
-            typeof props.allowsFraction !==
-            'boolean'
-        ) {
+        if (typeof props.allowsFraction !== 'boolean') {
             throw new InvalidInventoryBalanceException(
                 'La configuración de fraccionamiento de la unidad no es válida',
             );
         }
 
         if (
-            !Number.isInteger(
-                props.decimalPlaces,
-            ) ||
+            !Number.isInteger(props.decimalPlaces) ||
             props.decimalPlaces < 0
         ) {
             throw new InvalidInventoryBalanceException(
@@ -801,10 +722,7 @@ export class InventoryBalance {
             );
         }
 
-        if (
-            !props.allowsFraction &&
-            props.decimalPlaces !== 0
-        ) {
+        if (!props.allowsFraction && props.decimalPlaces !== 0) {
             throw new InvalidInventoryBalanceException(
                 'Una unidad que no permite fracciones debe tener cero posiciones decimales',
             );

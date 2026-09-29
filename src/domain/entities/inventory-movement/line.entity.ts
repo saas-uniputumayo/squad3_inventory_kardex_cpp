@@ -7,12 +7,13 @@ import {
     QuantityVO,
 } from '../../value-objects/quantity.vo';
 import { UnitCostVO } from '../../value-objects/unit-cost.vo';
+import { InventoryPrecisionPolicy } from '../../policy/precision.policy';
 
 export interface CreateInventoryMovementLineProps {
     id: string;
     movementId: string;
     productId: string;
-    variantId?: string;
+    variantId: string;
     unitOfMeasureId: string;
     allowsFraction: boolean;
     decimalPlaces: number;
@@ -20,13 +21,14 @@ export interface CreateInventoryMovementLineProps {
     quantity: Decimal.Value;
     unitCost: Decimal.Value;
     totalCost?: Decimal.Value;
+    lineNumber?: number;
 }
 
 export interface InventoryMovementLineProps {
     id: string;
     movementId: string;
     productId: string;
-    variantId?: string;
+    variantId: string;
     unitOfMeasureId: string;
     allowsFraction: boolean;
     decimalPlaces: number;
@@ -34,6 +36,7 @@ export interface InventoryMovementLineProps {
     quantity: QuantityVO;
     unitCost: UnitCostVO;
     totalCost: MoneyVO;
+    lineNumber?: number;
     createdAt: Date;
 }
 
@@ -42,7 +45,7 @@ export class InventoryMovementLine {
         private readonly id: string,
         private readonly movementId: string,
         private readonly productId: string,
-        private readonly variantId: string | undefined,
+        private readonly variantId: string,
         private readonly unitOfMeasureId: string,
         private readonly allowsFraction: boolean,
         private readonly decimalPlaces: number,
@@ -50,6 +53,7 @@ export class InventoryMovementLine {
         private readonly quantity: QuantityVO,
         private readonly unitCost: UnitCostVO,
         private readonly totalCost: MoneyVO,
+        private readonly lineNumber: number | undefined,
         private readonly createdAt: Date,
     ) { }
 
@@ -83,23 +87,24 @@ export class InventoryMovementLine {
             currency,
         );
 
-        const calculatedTotalCost =
-            unitCost.multiply(
-                quantity.getAmount(),
-            );
+        // totalCost = round(unitCost × quantity, 4)
+        const calculatedTotalCost = unitCost.multiply(
+            quantity.getAmount(),
+        );
+
+        const totalCostAmount = props.totalCost !== undefined && props.totalCost !== null
+            ? InventoryPrecisionPolicy.roundInventoryValue(props.totalCost)
+            : calculatedTotalCost;
 
         const totalCost = MoneyVO.create(
-            props.totalCost ?? calculatedTotalCost,
+            totalCostAmount,
             currency,
         );
 
-        if (
-            !totalCost
-                .getAmount()
-                .eq(calculatedTotalCost)
-        ) {
+        // Validación precision-aware que tolera redondeos comerciales
+        if (!InventoryPrecisionPolicy.areValuesEquivalent(totalCost.getAmount(), calculatedTotalCost)) {
             throw new InvalidInventoryMovementException(
-                'El costo total de la línea no coincide con la cantidad multiplicada por el costo unitario',
+                'El costo total de la línea no coincide razonablemente con la cantidad multiplicada por el costo unitario',
             );
         }
 
@@ -117,6 +122,7 @@ export class InventoryMovementLine {
             quantity,
             unitCost,
             totalCost,
+            props.lineNumber,
             createdAt,
         );
     }
@@ -126,8 +132,7 @@ export class InventoryMovementLine {
     ): InventoryMovementLine {
         InventoryMovementLine.validateIdentity(props);
 
-        const currency =
-            props.currency.trim().toUpperCase();
+        const currency = props.currency.trim().toUpperCase();
 
         const quantityRules: QuantityRules = {
             unitOfMeasureId: props.unitOfMeasureId,
@@ -156,26 +161,17 @@ export class InventoryMovementLine {
             currency,
         );
 
-        const calculatedTotalCost =
-            unitCost.multiply(
-                quantity.getAmount(),
-            );
+        const calculatedTotalCost = unitCost.multiply(
+            quantity.getAmount(),
+        );
 
-        if (
-            !totalCost
-                .getAmount()
-                .eq(calculatedTotalCost)
-        ) {
+        if (!InventoryPrecisionPolicy.areValuesEquivalent(totalCost.getAmount(), calculatedTotalCost)) {
             throw new InvalidInventoryMovementException(
-                'El costo total de la línea no coincide con la cantidad multiplicada por el costo unitario',
+                'El costo total de la línea no coincide razonablemente con la cantidad multiplicada por el costo unitario',
             );
         }
 
-        if (
-            Number.isNaN(
-                props.createdAt.getTime(),
-            )
-        ) {
+        if (Number.isNaN(props.createdAt.getTime())) {
             throw new InvalidInventoryMovementException(
                 'La fecha de creación de la línea no es válida',
             );
@@ -193,6 +189,7 @@ export class InventoryMovementLine {
             quantity,
             unitCost,
             totalCost,
+            props.lineNumber,
             props.createdAt,
         );
     }
@@ -209,7 +206,7 @@ export class InventoryMovementLine {
         return this.productId;
     }
 
-    getVariantId(): string | undefined {
+    getVariantId(): string {
         return this.variantId;
     }
 
@@ -241,57 +238,61 @@ export class InventoryMovementLine {
         return this.totalCost;
     }
 
+    getLineNumber(): number | undefined {
+        return this.lineNumber;
+    }
+
     getCreatedAt(): Date {
         return this.createdAt;
     }
 
-    private static validateIdentity(
-        props: {
-            id: string;
-            movementId: string;
-            productId: string;
-            unitOfMeasureId: string;
-            allowsFraction: boolean;
-            decimalPlaces: number;
-        },
-    ): void {
-        if (!props.id.trim()) {
+    private static validateIdentity(props: {
+        id: string;
+        movementId: string;
+        productId: string;
+        variantId: string;
+        unitOfMeasureId: string;
+        allowsFraction: boolean;
+        decimalPlaces: number;
+    }): void {
+        if (typeof props.id !== 'string' || !props.id.trim()) {
             throw new InvalidInventoryMovementException(
                 'El identificador de la línea es obligatorio',
             );
         }
 
-        if (!props.movementId.trim()) {
+        if (typeof props.movementId !== 'string' || !props.movementId.trim()) {
             throw new InvalidInventoryMovementException(
                 'La línea debe pertenecer a un movimiento',
             );
         }
 
-        if (!props.productId.trim()) {
+        if (typeof props.productId !== 'string' || !props.productId.trim()) {
             throw new InvalidInventoryMovementException(
                 'La línea debe pertenecer a un producto',
             );
         }
 
-        if (!props.unitOfMeasureId.trim()) {
+        if (typeof props.variantId !== 'string' || !props.variantId.trim()) {
+            throw new InvalidInventoryMovementException(
+                'La línea debe pertenecer a una variante',
+            );
+        }
+
+        if (typeof props.unitOfMeasureId !== 'string' || !props.unitOfMeasureId.trim()) {
             throw new InvalidInventoryMovementException(
                 'La línea debe tener una unidad de medida',
             );
         }
 
-        if (
-            typeof props.allowsFraction !==
-            'boolean'
-        ) {
+        if (typeof props.allowsFraction !== 'boolean') {
             throw new InvalidInventoryMovementException(
                 'La configuración de fraccionamiento de la unidad no es válida',
             );
         }
 
         if (
-            !Number.isInteger(
-                props.decimalPlaces,
-            ) ||
+            !Number.isInteger(props.decimalPlaces) ||
             props.decimalPlaces < 0
         ) {
             throw new InvalidInventoryMovementException(
@@ -299,10 +300,7 @@ export class InventoryMovementLine {
             );
         }
 
-        if (
-            !props.allowsFraction &&
-            props.decimalPlaces !== 0
-        ) {
+        if (!props.allowsFraction && props.decimalPlaces !== 0) {
             throw new InvalidInventoryMovementException(
                 'Una unidad que no permite fracciones debe tener cero posiciones decimales',
             );

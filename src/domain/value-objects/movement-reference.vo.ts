@@ -1,5 +1,5 @@
-import { InvalidInventoryMovementException } from '../exceptions/invalid-inventory-movement.exception';
-import { ReferenceType } from '../entities/inventory-movement/types';
+import { InvalidMovementReferenceException } from '../exceptions/invalid-movement-reference.exception';
+import { ReferenceType } from '../types';
 
 export class MovementReferenceVO {
     private constructor(
@@ -11,30 +11,22 @@ export class MovementReferenceVO {
         type: ReferenceType,
         id?: string,
     ): MovementReferenceVO {
-        if (
-            !Object.values(ReferenceType).includes(type)
-        ) {
-            throw new InvalidInventoryMovementException(
+        if (!type || !Object.values(ReferenceType).includes(type)) {
+            throw new InvalidMovementReferenceException(
                 'El tipo de referencia del movimiento no es válido',
             );
         }
 
         const normalizedId =
-            id?.trim() || undefined;
+            typeof id === 'string' ? id.trim() || undefined : undefined;
 
-        if (
-            type !== ReferenceType.SYSTEM &&
-            !normalizedId
-        ) {
-            throw new InvalidInventoryMovementException(
+        if (type !== ReferenceType.OTHER && !normalizedId) {
+            throw new InvalidMovementReferenceException(
                 `La referencia ${type} requiere un identificador`,
             );
         }
 
-        return new MovementReferenceVO(
-            type,
-            normalizedId,
-        );
+        return new MovementReferenceVO(type, normalizedId);
     }
 
     getType(): ReferenceType {
@@ -45,15 +37,11 @@ export class MovementReferenceVO {
         return this.id;
     }
 
-    isSystemReference(): boolean {
-        return (
-            this.type === ReferenceType.SYSTEM
-        );
-    }
+    equals(other: MovementReferenceVO): boolean {
+        if (!other) {
+            return false;
+        }
 
-    equals(
-        other: MovementReferenceVO,
-    ): boolean {
         return (
             this.type === other.type &&
             this.id === other.id

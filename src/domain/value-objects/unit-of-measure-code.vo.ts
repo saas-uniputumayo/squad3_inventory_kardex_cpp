@@ -1,7 +1,7 @@
 import { InvalidUnitOfMeasureException } from '../exceptions/invalid-unit-of-measure.exception';
 
 export class UnitOfMeasureCodeVO {
-    private static readonly MAX_LENGTH = 20;
+    public static readonly MAX_LENGTH = 20;
 
     private readonly value: string;
 
@@ -10,6 +10,12 @@ export class UnitOfMeasureCodeVO {
     }
 
     static create(value: string): UnitOfMeasureCodeVO {
+        if (typeof value !== 'string') {
+            throw new InvalidUnitOfMeasureException(
+                'El código de la unidad de medida debe ser una cadena de texto',
+            );
+        }
+
         const normalized = value.trim().toUpperCase();
 
         if (!normalized) {
@@ -38,6 +44,10 @@ export class UnitOfMeasureCodeVO {
     }
 
     equals(other: UnitOfMeasureCodeVO): boolean {
+        if (!other) {
+            return false;
+        }
+
         return this.value === other.value;
     }
 

@@ -1,4 +1,4 @@
-import { InvalidInventoryTransferException } from '../exceptions/invalid-inventory-transfer.exception';
+import { InvalidTransferReferenceException } from '../exceptions/invalid-transfer-reference.exception';
 
 export class TransferReferenceVO {
     private static readonly MAX_LENGTH = 100;
@@ -10,27 +10,27 @@ export class TransferReferenceVO {
     static create(
         value: string,
     ): TransferReferenceVO {
-        const normalized =
-            value.trim().toUpperCase();
+        if (typeof value !== 'string') {
+            throw new InvalidTransferReferenceException(
+                'La referencia de transferencia debe ser una cadena de texto',
+            );
+        }
+
+        const normalized = value.trim().toUpperCase();
 
         if (!normalized) {
-            throw new InvalidInventoryTransferException(
+            throw new InvalidTransferReferenceException(
                 'La referencia de transferencia es obligatoria',
             );
         }
 
-        if (
-            normalized.length >
-            TransferReferenceVO.MAX_LENGTH
-        ) {
-            throw new InvalidInventoryTransferException(
+        if (normalized.length > TransferReferenceVO.MAX_LENGTH) {
+            throw new InvalidTransferReferenceException(
                 `La referencia de transferencia no puede superar los ${TransferReferenceVO.MAX_LENGTH} caracteres`,
             );
         }
 
-        return new TransferReferenceVO(
-            normalized,
-        );
+        return new TransferReferenceVO(normalized);
     }
 
     getValue(): string {
@@ -40,6 +40,10 @@ export class TransferReferenceVO {
     equals(
         other: TransferReferenceVO,
     ): boolean {
+        if (!other) {
+            return false;
+        }
+
         return this.value === other.value;
     }
 

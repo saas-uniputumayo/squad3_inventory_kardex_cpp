@@ -1,10 +1,8 @@
 import { InvalidWarehouseException } from '../../exceptions/invalid-warehouse.exception';
 import { WarehouseCodeVO } from '../../value-objects/warehouse-code.vo';
+import { WarehouseStatus } from '../../types';
 
-export enum WarehouseStatus {
-    ACTIVE = 'ACTIVE',
-    INACTIVE = 'INACTIVE',
-}
+export { WarehouseStatus };
 
 export interface CreateWarehouseProps {
     id: string;
@@ -12,6 +10,7 @@ export interface CreateWarehouseProps {
     branchId: string;
     code: WarehouseCodeVO;
     name: string;
+    description?: string | null;
 }
 
 export interface WarehouseProps {
@@ -20,41 +19,31 @@ export interface WarehouseProps {
     branchId: string;
     code: WarehouseCodeVO;
     name: string;
+    description?: string | null;
     status: WarehouseStatus;
     createdAt: Date;
     updatedAt: Date;
+    archivedAt?: Date | null;
 }
 
 export class Warehouse {
+    public static readonly MAX_NAME_LENGTH = 100; // Coincide con schema.prisma VarChar(100)
+
     private constructor(
         private readonly id: string,
         private readonly tenantId: string,
         private readonly branchId: string,
         private code: WarehouseCodeVO,
         private name: string,
+        private description: string | null,
         private status: WarehouseStatus,
         private readonly createdAt: Date,
         private updatedAt: Date,
+        private archivedAt: Date | null,
     ) { }
 
     static create(props: CreateWarehouseProps): Warehouse {
-        if (!props.id.trim()) {
-            throw new InvalidWarehouseException(
-                'El identificador de la bodega es obligatorio',
-            );
-        }
-
-        if (!props.tenantId.trim()) {
-            throw new InvalidWarehouseException(
-                'La bodega debe pertenecer a un tenant',
-            );
-        }
-
-        if (!props.branchId.trim()) {
-            throw new InvalidWarehouseException(
-                'La bodega debe pertenecer a una sucursal',
-            );
-        }
+        Warehouse.validateIdentity(props);
 
         const name = props.name.trim();
 
@@ -64,9 +53,9 @@ export class Warehouse {
             );
         }
 
-        if (name.length > 150) {
+        if (name.length > Warehouse.MAX_NAME_LENGTH) {
             throw new InvalidWarehouseException(
-                'El nombre de la bodega no puede superar los 150 caracteres',
+                `El nombre de la bodega no puede superar los ${Warehouse.MAX_NAME_LENGTH} caracteres`,
             );
         }
 
@@ -78,34 +67,26 @@ export class Warehouse {
             props.branchId,
             props.code,
             name,
+            props.description?.trim() || null,
             WarehouseStatus.ACTIVE,
             now,
             now,
+            null,
         );
     }
 
     static rehydrate(props: WarehouseProps): Warehouse {
-        if (!props.id.trim()) {
-            throw new InvalidWarehouseException(
-                'El identificador de la bodega es obligatorio',
-            );
-        }
+        Warehouse.validateIdentity(props);
 
-        if (!props.tenantId.trim()) {
-            throw new InvalidWarehouseException(
-                'La bodega debe pertenecer a un tenant',
-            );
-        }
-
-        if (!props.branchId.trim()) {
-            throw new InvalidWarehouseException(
-                'La bodega debe pertenecer a una sucursal',
-            );
-        }
-
-        if (!props.name.trim()) {
+        if (!props.name || !props.name.trim()) {
             throw new InvalidWarehouseException(
                 'El nombre de la bodega es obligatorio',
+            );
+        }
+
+        if (!Object.values(WarehouseStatus).includes(props.status)) {
+            throw new InvalidWarehouseException(
+                'El estado de la bodega no es válido',
             );
         }
 
@@ -114,17 +95,21 @@ export class Warehouse {
             props.tenantId,
             props.branchId,
             props.code,
-            props.name,
+            props.name.trim(),
+            props.description ?? null,
             props.status,
             props.createdAt,
             props.updatedAt,
+            props.archivedAt ?? null,
         );
     }
 
     updateDetails(props: {
         code?: WarehouseCodeVO;
         name?: string;
+        description?: string | null;
     }): void {
+        this.ensureNotArchived();
         this.ensureActive();
 
         if (props.code !== undefined) {
@@ -140,19 +125,25 @@ export class Warehouse {
                 );
             }
 
-            if (name.length > 150) {
+            if (name.length > Warehouse.MAX_NAME_LENGTH) {
                 throw new InvalidWarehouseException(
-                    'El nombre de la bodega no puede superar los 150 caracteres',
+                    `El nombre de la bodega no puede superar los ${Warehouse.MAX_NAME_LENGTH} caracteres`,
                 );
             }
 
             this.name = name;
         }
 
+        if (props.description !== undefined) {
+            this.description = props.description?.trim() || null;
+        }
+
         this.touch();
     }
 
     activate(): void {
+        this.ensureNotArchived();
+
         if (this.status === WarehouseStatus.ACTIVE) {
             return;
         }
@@ -162,11 +153,23 @@ export class Warehouse {
     }
 
     deactivate(): void {
+        this.ensureNotArchived();
+
         if (this.status === WarehouseStatus.INACTIVE) {
             return;
         }
 
         this.status = WarehouseStatus.INACTIVE;
+        this.touch();
+    }
+
+    archive(): void {
+        if (this.status === WarehouseStatus.ARCHIVED) {
+            return;
+        }
+
+        this.status = WarehouseStatus.ARCHIVED;
+        this.archivedAt = new Date();
         this.touch();
     }
 
@@ -178,10 +181,54 @@ export class Warehouse {
         return this.status === WarehouseStatus.INACTIVE;
     }
 
+    isArchived(): boolean {
+        return this.status === WarehouseStatus.ARCHIVED;
+    }
+
+    canOperate(): boolean {
+        return this.status === WarehouseStatus.ACTIVE;
+    }
+
     private ensureActive(): void {
         if (this.status === WarehouseStatus.INACTIVE) {
             throw new InvalidWarehouseException(
                 'No se puede modificar una bodega inactiva',
+            );
+        }
+    }
+
+    canPerformInventoryOperations(): boolean {
+        return this.status === WarehouseStatus.ACTIVE;
+    }
+
+    private ensureNotArchived(): void {
+        if (this.status === WarehouseStatus.ARCHIVED) {
+            throw new InvalidWarehouseException(
+                'No se puede operar ni modificar una bodega archivada',
+            );
+        }
+    }
+
+    private static validateIdentity(props: {
+        id: string;
+        tenantId: string;
+        branchId: string;
+    }): void {
+        if (typeof props.id !== 'string' || !props.id.trim()) {
+            throw new InvalidWarehouseException(
+                'El identificador de la bodega es obligatorio',
+            );
+        }
+
+        if (typeof props.tenantId !== 'string' || !props.tenantId.trim()) {
+            throw new InvalidWarehouseException(
+                'La bodega debe pertenecer a un tenant',
+            );
+        }
+
+        if (typeof props.branchId !== 'string' || !props.branchId.trim()) {
+            throw new InvalidWarehouseException(
+                'La bodega debe pertenecer a una sucursal',
             );
         }
     }
@@ -210,6 +257,10 @@ export class Warehouse {
         return this.name;
     }
 
+    getDescription(): string | null {
+        return this.description;
+    }
+
     getStatus(): WarehouseStatus {
         return this.status;
     }
@@ -220,5 +271,9 @@ export class Warehouse {
 
     getUpdatedAt(): Date {
         return this.updatedAt;
+    }
+
+    getArchivedAt(): Date | null {
+        return this.archivedAt;
     }
 }

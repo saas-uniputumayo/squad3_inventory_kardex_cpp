@@ -29,8 +29,11 @@ export class QuantityVO {
         amount: Decimal.Value,
         rules: QuantityRules,
     ): QuantityVO {
-        const normalizedRules =
-            QuantityVO.normalizeRules(rules);
+        if (amount === undefined || amount === null) {
+            throw new InvalidQuantityException('La cantidad es obligatoria');
+        }
+
+        const normalizedRules = QuantityVO.normalizeRules(rules);
 
         let decimal: Decimal;
 
@@ -54,24 +57,13 @@ export class QuantityVO {
             );
         }
 
-        QuantityVO.validatePrecision(
-            decimal,
-            normalizedRules,
-        );
+        QuantityVO.validatePrecision(decimal, normalizedRules);
 
-        return new QuantityVO(
-            decimal,
-            normalizedRules,
-        );
+        return new QuantityVO(decimal, normalizedRules);
     }
 
-    static zero(
-        rules: QuantityRules,
-    ): QuantityVO {
-        return QuantityVO.create(
-            0,
-            rules,
-        );
+    static zero(rules: QuantityRules): QuantityVO {
+        return QuantityVO.create(0, rules);
     }
 
     add(other: QuantityVO): QuantityVO {
@@ -86,9 +78,7 @@ export class QuantityVO {
     subtract(other: QuantityVO): QuantityVO {
         this.ensureCompatibleQuantity(other);
 
-        const result = this.amount.minus(
-            other.amount,
-        );
+        const result = this.amount.minus(other.amount);
 
         if (result.isNegative()) {
             throw new InvalidQuantityException(
@@ -96,21 +86,18 @@ export class QuantityVO {
             );
         }
 
-        return QuantityVO.create(
-            result,
-            this.rules,
-        );
+        return QuantityVO.create(result, this.rules);
     }
 
-    multiply(
-        multiplier: Decimal.Value,
-    ): QuantityVO {
+    multiply(multiplier: Decimal.Value): QuantityVO {
+        if (multiplier === undefined || multiplier === null) {
+            throw new InvalidQuantityException('El multiplicador es obligatorio');
+        }
+
         let decimalMultiplier: Decimal;
 
         try {
-            decimalMultiplier = new Decimal(
-                multiplier,
-            );
+            decimalMultiplier = new Decimal(multiplier);
         } catch {
             throw new InvalidQuantityException(
                 'El multiplicador debe ser un valor numérico válido',
@@ -129,19 +116,9 @@ export class QuantityVO {
             );
         }
 
-        const result =
-            this.amount.mul(decimalMultiplier);
+        const result = this.amount.mul(decimalMultiplier);
 
-        if (!result.isFinite()) {
-            throw new InvalidQuantityException(
-                'El resultado de la cantidad debe ser finito',
-            );
-        }
-
-        return QuantityVO.create(
-            result,
-            this.rules,
-        );
+        return QuantityVO.create(result, this.rules);
     }
 
     isZero(): boolean {
@@ -152,50 +129,33 @@ export class QuantityVO {
         return this.amount.greaterThan(0);
     }
 
-    isGreaterThan(
-        other: QuantityVO,
-    ): boolean {
+    isGreaterThan(other: QuantityVO): boolean {
         this.ensureCompatibleQuantity(other);
-
-        return this.amount.greaterThan(
-            other.amount,
-        );
+        return this.amount.greaterThan(other.amount);
     }
 
-    isGreaterThanOrEqual(
-        other: QuantityVO,
-    ): boolean {
+    isGreaterThanOrEqual(other: QuantityVO): boolean {
         this.ensureCompatibleQuantity(other);
-
-        return this.amount.greaterThanOrEqualTo(
-            other.amount,
-        );
+        return this.amount.greaterThanOrEqualTo(other.amount);
     }
 
-    isLessThan(
-        other: QuantityVO,
-    ): boolean {
+    isLessThan(other: QuantityVO): boolean {
         this.ensureCompatibleQuantity(other);
-
-        return this.amount.lessThan(
-            other.amount,
-        );
+        return this.amount.lessThan(other.amount);
     }
 
-    isLessThanOrEqual(
-        other: QuantityVO,
-    ): boolean {
+    isLessThanOrEqual(other: QuantityVO): boolean {
         this.ensureCompatibleQuantity(other);
-
-        return this.amount.lessThanOrEqualTo(
-            other.amount,
-        );
+        return this.amount.lessThanOrEqualTo(other.amount);
     }
 
     equals(other: QuantityVO): boolean {
+        if (!other) {
+            return false;
+        }
+
         return (
-            this.unitOfMeasureId ===
-            other.unitOfMeasureId &&
+            this.unitOfMeasureId === other.unitOfMeasureId &&
             this.amount.eq(other.amount)
         );
     }
@@ -220,42 +180,44 @@ export class QuantityVO {
         return `${this.amount.toString()} ${this.unitOfMeasureId}`;
     }
 
-    private ensureCompatibleQuantity(
-        other: QuantityVO,
-    ): void {
-        if (
-            this.unitOfMeasureId !==
-            other.unitOfMeasureId
-        ) {
+    private ensureCompatibleQuantity(other: QuantityVO): void {
+        if (!other) {
+            throw new InvalidQuantityException('La cantidad a comparar es requerida');
+        }
+
+        if (this.unitOfMeasureId !== other.unitOfMeasureId) {
             throw new InvalidQuantityException(
                 'No se pueden operar cantidades con unidades de medida diferentes',
             );
         }
 
-        if (
-            this.rules.allowsFraction !==
-            other.rules.allowsFraction
-        ) {
+        if (this.rules.allowsFraction !== other.rules.allowsFraction) {
             throw new InvalidQuantityException(
                 'No se pueden operar cantidades con reglas de fraccionamiento diferentes',
             );
         }
 
-        if (
-            this.rules.decimalPlaces !==
-            other.rules.decimalPlaces
-        ) {
+        if (this.rules.decimalPlaces !== other.rules.decimalPlaces) {
             throw new InvalidQuantityException(
                 'No se pueden operar cantidades con precisiones decimales diferentes',
             );
         }
     }
 
-    private static normalizeRules(
-        rules: QuantityRules,
-    ): QuantityRules {
-        const unitOfMeasureId =
-            rules.unitOfMeasureId.trim();
+    private static normalizeRules(rules: QuantityRules): QuantityRules {
+        if (!rules) {
+            throw new InvalidQuantityException(
+                'Las reglas de la cantidad son obligatorias',
+            );
+        }
+
+        if (typeof rules.unitOfMeasureId !== 'string') {
+            throw new InvalidQuantityException(
+                'La cantidad debe tener una unidad de medida válida',
+            );
+        }
+
+        const unitOfMeasureId = rules.unitOfMeasureId.trim();
 
         if (!unitOfMeasureId) {
             throw new InvalidQuantityException(
@@ -263,20 +225,13 @@ export class QuantityVO {
             );
         }
 
-        if (
-            typeof rules.allowsFraction !==
-            'boolean'
-        ) {
+        if (typeof rules.allowsFraction !== 'boolean') {
             throw new InvalidQuantityException(
                 'La configuración de fraccionamiento de la unidad no es válida',
             );
         }
 
-        if (
-            !Number.isInteger(
-                rules.decimalPlaces,
-            )
-        ) {
+        if (!Number.isInteger(rules.decimalPlaces)) {
             throw new InvalidQuantityException(
                 'Las posiciones decimales deben ser un número entero',
             );
@@ -288,10 +243,7 @@ export class QuantityVO {
             );
         }
 
-        if (
-            !rules.allowsFraction &&
-            rules.decimalPlaces !== 0
-        ) {
+        if (!rules.allowsFraction && rules.decimalPlaces !== 0) {
             throw new InvalidQuantityException(
                 'Una unidad que no permite fracciones debe tener cero posiciones decimales',
             );
@@ -299,10 +251,8 @@ export class QuantityVO {
 
         return {
             unitOfMeasureId,
-            allowsFraction:
-                rules.allowsFraction,
-            decimalPlaces:
-                rules.decimalPlaces,
+            allowsFraction: rules.allowsFraction,
+            decimalPlaces: rules.decimalPlaces,
         };
     }
 
@@ -310,44 +260,29 @@ export class QuantityVO {
         value: Decimal,
         rules: QuantityRules,
     ): void {
-        if (
-            !rules.allowsFraction &&
-            !value.isInteger()
-        ) {
+        if (!rules.allowsFraction && !value.isInteger()) {
             throw new InvalidQuantityException(
                 `La unidad ${rules.unitOfMeasureId} no permite cantidades fraccionarias`,
             );
         }
 
-        const decimalPlaces =
-            QuantityVO.countDecimalPlaces(value);
+        const decimalPlaces = QuantityVO.countDecimalPlaces(value);
 
-        if (
-            decimalPlaces >
-            rules.decimalPlaces
-        ) {
+        if (decimalPlaces > rules.decimalPlaces) {
             throw new InvalidQuantityException(
                 `La cantidad para ${rules.unitOfMeasureId} admite máximo ${rules.decimalPlaces} posiciones decimales`,
             );
         }
     }
 
-    private static countDecimalPlaces(
-        value: Decimal,
-    ): number {
+    private static countDecimalPlaces(value: Decimal): number {
         const fixed = value.toFixed();
-
-        const decimalSeparator =
-            fixed.indexOf('.');
+        const decimalSeparator = fixed.indexOf('.');
 
         if (decimalSeparator === -1) {
             return 0;
         }
 
-        return (
-            fixed.length -
-            decimalSeparator -
-            1
-        );
+        return fixed.length - decimalSeparator - 1;
     }
 }

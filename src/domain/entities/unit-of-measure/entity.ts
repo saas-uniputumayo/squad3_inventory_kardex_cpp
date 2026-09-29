@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js';
 import { InvalidUnitOfMeasureException } from '../../exceptions/invalid-unit-of-measure.exception';
 import { UnitOfMeasureCodeVO } from '../../value-objects/unit-of-measure-code.vo';
 
@@ -67,10 +68,7 @@ export class UnitOfMeasure {
             );
         }
 
-        if (
-            name.length >
-            UnitOfMeasure.MAX_NAME_LENGTH
-        ) {
+        if (name.length > UnitOfMeasure.MAX_NAME_LENGTH) {
             throw new InvalidUnitOfMeasureException(
                 `El nombre de la unidad de medida no puede superar los ${UnitOfMeasure.MAX_NAME_LENGTH} caracteres`,
             );
@@ -78,20 +76,12 @@ export class UnitOfMeasure {
 
         UnitOfMeasure.validateType(props.type);
 
-        const allowsFraction =
-            props.allowsFraction ?? true;
+        const allowsFraction = props.allowsFraction ?? true;
+        const decimalPlaces = props.decimalPlaces ?? 3; // Coincide con prisma default decimal_places: 3
 
-        const decimalPlaces =
-            props.decimalPlaces ?? 6;
+        UnitOfMeasure.validateDecimalPlaces(decimalPlaces);
 
-        UnitOfMeasure.validateDecimalPlaces(
-            decimalPlaces,
-        );
-
-        if (
-            !allowsFraction &&
-            decimalPlaces !== 0
-        ) {
+        if (!allowsFraction && decimalPlaces !== 0) {
             throw new InvalidUnitOfMeasureException(
                 'Una unidad que no permite fracciones debe tener cero posiciones decimales',
             );
@@ -125,15 +115,9 @@ export class UnitOfMeasure {
         }
 
         UnitOfMeasure.validateType(props.type);
+        UnitOfMeasure.validateDecimalPlaces(props.decimalPlaces);
 
-        UnitOfMeasure.validateDecimalPlaces(
-            props.decimalPlaces,
-        );
-
-        if (
-            !props.allowsFraction &&
-            props.decimalPlaces !== 0
-        ) {
+        if (!props.allowsFraction && props.decimalPlaces !== 0) {
             throw new InvalidUnitOfMeasureException(
                 'Una unidad que no permite fracciones debe tener cero posiciones decimales',
             );
@@ -175,10 +159,7 @@ export class UnitOfMeasure {
                 );
             }
 
-            if (
-                name.length >
-                UnitOfMeasure.MAX_NAME_LENGTH
-            ) {
+            if (name.length > UnitOfMeasure.MAX_NAME_LENGTH) {
                 throw new InvalidUnitOfMeasureException(
                     `El nombre de la unidad de medida no puede superar los ${UnitOfMeasure.MAX_NAME_LENGTH} caracteres`,
                 );
@@ -188,89 +169,51 @@ export class UnitOfMeasure {
         }
 
         if (props.type !== undefined) {
-            UnitOfMeasure.validateType(
-                props.type,
-            );
-
+            UnitOfMeasure.validateType(props.type);
             this.type = props.type;
         }
 
-        if (
-            props.allowsFraction !== undefined
-        ) {
-            this.allowsFraction =
-                props.allowsFraction;
+        if (props.allowsFraction !== undefined) {
+            this.allowsFraction = props.allowsFraction;
         }
 
-        if (
-            props.decimalPlaces !== undefined
-        ) {
-            UnitOfMeasure.validateDecimalPlaces(
-                props.decimalPlaces,
-            );
-
-            this.decimalPlaces =
-                props.decimalPlaces;
+        if (props.decimalPlaces !== undefined) {
+            UnitOfMeasure.validateDecimalPlaces(props.decimalPlaces);
+            this.decimalPlaces = props.decimalPlaces;
         }
 
         this.validateFractionConfiguration();
-
         this.touch();
     }
 
     activate(): void {
-        if (
-            this.status ===
-            UnitOfMeasureStatus.ACTIVE
-        ) {
+        if (this.status === UnitOfMeasureStatus.ACTIVE) {
             return;
         }
 
-        this.status =
-            UnitOfMeasureStatus.ACTIVE;
-
+        this.status = UnitOfMeasureStatus.ACTIVE;
         this.touch();
     }
 
     deactivate(): void {
-        if (
-            this.status ===
-            UnitOfMeasureStatus.INACTIVE
-        ) {
+        if (this.status === UnitOfMeasureStatus.INACTIVE) {
             return;
         }
 
-        this.status =
-            UnitOfMeasureStatus.INACTIVE;
-
+        this.status = UnitOfMeasureStatus.INACTIVE;
         this.touch();
     }
 
     isActive(): boolean {
-        return (
-            this.status ===
-            UnitOfMeasureStatus.ACTIVE
-        );
+        return this.status === UnitOfMeasureStatus.ACTIVE;
     }
 
     isInactive(): boolean {
-        return (
-            this.status ===
-            UnitOfMeasureStatus.INACTIVE
-        );
+        return this.status === UnitOfMeasureStatus.INACTIVE;
     }
 
-    /**
-     * Valida si una cantidad puede utilizar
-     * esta unidad de medida.
-     */
-    canRepresentQuantity(
-        decimalPlaces: number,
-    ): boolean {
-        if (
-            !Number.isInteger(decimalPlaces) ||
-            decimalPlaces < 0
-        ) {
+    canRepresentQuantity(decimalPlaces: number): boolean {
+        if (!Number.isInteger(decimalPlaces) || decimalPlaces < 0) {
             return false;
         }
 
@@ -278,54 +221,37 @@ export class UnitOfMeasure {
             return decimalPlaces === 0;
         }
 
-        return (
-            decimalPlaces <=
-            this.decimalPlaces
-        );
+        return decimalPlaces <= this.decimalPlaces;
     }
 
-    /**
-     * Valida directamente el valor de una cantidad
-     * utilizando las reglas de precisión de esta UOM.
-     */
-    validateQuantity(
-        quantity: string | number,
-    ): void {
-        const value = String(quantity).trim();
+    validateQuantity(quantity: Decimal.Value): void {
+        let dec: Decimal;
 
-        if (!value) {
-            throw new InvalidUnitOfMeasureException(
-                'La cantidad es obligatoria',
-            );
+        try {
+            dec = new Decimal(quantity);
+        } catch {
+            throw new InvalidUnitOfMeasureException('La cantidad debe ser un número decimal válido');
         }
 
-        if (
-            !/^\d+(?:\.\d+)?$/.test(value)
-        ) {
-            throw new InvalidUnitOfMeasureException(
-                'La cantidad debe ser un número decimal válido',
-            );
+        if (!dec.isFinite()) {
+            throw new InvalidUnitOfMeasureException('La cantidad debe ser finita');
         }
 
-        const [, decimals = ''] =
-            value.split('.');
+        if (dec.isNegative()) {
+            throw new InvalidUnitOfMeasureException('La cantidad no puede ser negativa');
+        }
 
-        const decimalPlaces =
-            decimals.length;
-
-        if (
-            !this.allowsFraction &&
-            decimalPlaces > 0
-        ) {
+        if (!this.allowsFraction && !dec.isInteger()) {
             throw new InvalidUnitOfMeasureException(
                 `La unidad ${this.code.toString()} no permite cantidades fraccionarias`,
             );
         }
 
-        if (
-            decimalPlaces >
-            this.decimalPlaces
-        ) {
+        const fixed = dec.toFixed();
+        const sep = fixed.indexOf('.');
+        const decimalPlaces = sep === -1 ? 0 : fixed.length - sep - 1;
+
+        if (decimalPlaces > this.decimalPlaces) {
             throw new InvalidUnitOfMeasureException(
                 `La unidad ${this.code.toString()} admite máximo ${this.decimalPlaces} posiciones decimales`,
             );
@@ -333,10 +259,7 @@ export class UnitOfMeasure {
     }
 
     private validateFractionConfiguration(): void {
-        if (
-            !this.allowsFraction &&
-            this.decimalPlaces !== 0
-        ) {
+        if (!this.allowsFraction && this.decimalPlaces !== 0) {
             throw new InvalidUnitOfMeasureException(
                 'Una unidad que no permite fracciones debe tener cero posiciones decimales',
             );
@@ -344,65 +267,48 @@ export class UnitOfMeasure {
     }
 
     private ensureActive(): void {
-        if (
-            this.status ===
-            UnitOfMeasureStatus.INACTIVE
-        ) {
+        if (this.status === UnitOfMeasureStatus.INACTIVE) {
             throw new InvalidUnitOfMeasureException(
                 'No se puede modificar una unidad de medida inactiva',
             );
         }
     }
 
-    private static validateIdentity(
-        props: {
-            id: string;
-            tenantId: string;
-        },
-    ): void {
-        if (!props.id.trim()) {
+    private static validateIdentity(props: {
+        id: string;
+        tenantId: string;
+    }): void {
+        if (typeof props.id !== 'string' || !props.id.trim()) {
             throw new InvalidUnitOfMeasureException(
                 'El identificador de la unidad de medida es obligatorio',
             );
         }
 
-        if (!props.tenantId.trim()) {
+        if (typeof props.tenantId !== 'string' || !props.tenantId.trim()) {
             throw new InvalidUnitOfMeasureException(
                 'La unidad de medida debe pertenecer a un tenant',
             );
         }
     }
 
-    private static validateType(
-        type: UnitType,
-    ): void {
-        if (
-            !Object.values(UnitType).includes(
-                type,
-            )
-        ) {
+    private static validateType(type: UnitType): void {
+        if (!Object.values(UnitType).includes(type)) {
             throw new InvalidUnitOfMeasureException(
                 'El tipo de unidad de medida no es válido',
             );
         }
     }
 
-    private static validateDecimalPlaces(
-        decimalPlaces: number,
-    ): void {
-        if (
-            !Number.isInteger(decimalPlaces)
-        ) {
+    private static validateDecimalPlaces(decimalPlaces: number): void {
+        if (!Number.isInteger(decimalPlaces)) {
             throw new InvalidUnitOfMeasureException(
                 'La cantidad de posiciones decimales debe ser un número entero',
             );
         }
 
         if (
-            decimalPlaces <
-            UnitOfMeasure.MIN_DECIMAL_PLACES ||
-            decimalPlaces >
-            UnitOfMeasure.MAX_DECIMAL_PLACES
+            decimalPlaces < UnitOfMeasure.MIN_DECIMAL_PLACES ||
+            decimalPlaces > UnitOfMeasure.MAX_DECIMAL_PLACES
         ) {
             throw new InvalidUnitOfMeasureException(
                 `Las posiciones decimales deben estar entre ${UnitOfMeasure.MIN_DECIMAL_PLACES} y ${UnitOfMeasure.MAX_DECIMAL_PLACES}`,

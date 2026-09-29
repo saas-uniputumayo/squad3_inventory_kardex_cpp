@@ -15,6 +15,10 @@ export class MoneyVO {
         amount: Decimal.Value,
         currency = 'COP',
     ): MoneyVO {
+        if (amount === undefined || amount === null) {
+            throw new InvalidMoneyException('El valor monetario es obligatorio');
+        }
+
         let value: Decimal;
 
         try {
@@ -37,6 +41,12 @@ export class MoneyVO {
             );
         }
 
+        if (typeof currency !== 'string') {
+            throw new InvalidMoneyException(
+                'La moneda debe ser una cadena de texto',
+            );
+        }
+
         const normalizedCurrency = currency.trim().toUpperCase();
 
         if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
@@ -46,6 +56,10 @@ export class MoneyVO {
         }
 
         return new MoneyVO(value, normalizedCurrency);
+    }
+
+    static zero(currency = 'COP'): MoneyVO {
+        return MoneyVO.create(0, currency);
     }
 
     getAmount(): Decimal {
@@ -80,13 +94,37 @@ export class MoneyVO {
     }
 
     multiply(multiplier: Decimal.Value): MoneyVO {
+        if (multiplier === undefined || multiplier === null) {
+            throw new InvalidMoneyException('El multiplicador es obligatorio');
+        }
+
+        let decimalMultiplier: Decimal;
+
+        try {
+            decimalMultiplier = new Decimal(multiplier);
+        } catch {
+            throw new InvalidMoneyException('El multiplicador no es válido');
+        }
+
+        if (!decimalMultiplier.isFinite()) {
+            throw new InvalidMoneyException('El multiplicador debe ser finito');
+        }
+
+        if (decimalMultiplier.isNegative()) {
+            throw new InvalidMoneyException('El multiplicador no puede ser negativo');
+        }
+
         return MoneyVO.create(
-            this.amount.mul(multiplier),
+            this.amount.mul(decimalMultiplier),
             this.currency,
         );
     }
 
     equals(other: MoneyVO): boolean {
+        if (!other) {
+            return false;
+        }
+
         return (
             this.currency === other.currency &&
             this.amount.eq(other.amount)
@@ -94,11 +132,11 @@ export class MoneyVO {
     }
 
     toString(): string {
-        return `${this.amount.toFixed(2)} ${this.currency}`;
+        return `${this.amount.toString()} ${this.currency}`;
     }
 
     private ensureSameCurrency(other: MoneyVO): void {
-        if (this.currency !== other.currency) {
+        if (!other || this.currency !== other.currency) {
             throw new InvalidMoneyException(
                 'No se pueden operar monedas diferentes',
             );

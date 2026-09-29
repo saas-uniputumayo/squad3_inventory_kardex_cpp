@@ -1,7 +1,7 @@
 import { InvalidWarehouseException } from '../exceptions/invalid-warehouse.exception';
 
 export class WarehouseCodeVO {
-    private static readonly MAX_LENGTH = 50;
+    public static readonly MAX_LENGTH = 20;
 
     private readonly value: string;
 
@@ -10,6 +10,12 @@ export class WarehouseCodeVO {
     }
 
     static create(value: string): WarehouseCodeVO {
+        if (typeof value !== 'string') {
+            throw new InvalidWarehouseException(
+                'El código de la bodega debe ser una cadena de texto',
+            );
+        }
+
         const normalized = value.trim().toUpperCase();
 
         if (!normalized) {
@@ -32,6 +38,10 @@ export class WarehouseCodeVO {
     }
 
     equals(other: WarehouseCodeVO): boolean {
+        if (!other) {
+            return false;
+        }
+
         return this.value === other.value;
     }
 

@@ -1,6 +1,8 @@
 import { InvalidSkuException } from '../exceptions/invalid-sku.exception';
 
 export class SkuVO {
+    public static readonly MAX_LENGTH = 50;
+
     private readonly value: string;
 
     private constructor(value: string) {
@@ -8,15 +10,19 @@ export class SkuVO {
     }
 
     static create(value: string): SkuVO {
+        if (typeof value !== 'string') {
+            throw new InvalidSkuException('El SKU debe ser una cadena de texto');
+        }
+
         const normalized = value.trim().toUpperCase();
 
         if (!normalized) {
             throw new InvalidSkuException('El SKU es obligatorio');
         }
 
-        if (normalized.length > 100) {
+        if (normalized.length > SkuVO.MAX_LENGTH) {
             throw new InvalidSkuException(
-                'El SKU no puede superar los 100 caracteres',
+                `El SKU no puede superar los ${SkuVO.MAX_LENGTH} caracteres`,
             );
         }
 
@@ -28,6 +34,10 @@ export class SkuVO {
     }
 
     equals(other: SkuVO): boolean {
+        if (!other) {
+            return false;
+        }
+
         return this.value === other.value;
     }
 

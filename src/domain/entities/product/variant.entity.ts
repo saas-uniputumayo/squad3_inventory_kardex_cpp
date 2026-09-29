@@ -3,14 +3,9 @@ import Decimal from 'decimal.js';
 import { InvalidProductVariantException } from '../../exceptions/invalid-product-variant.exception';
 import { MoneyVO } from '../../value-objects/money.vo';
 import { SkuVO } from '../../value-objects/sku.vo';
+import { CostMethod, ProductVariantStatus } from '../../types';
 
-import { CostMethod } from './entity';
-
-export enum ProductVariantStatus {
-    ACTIVE = 'ACTIVE',
-    INACTIVE = 'INACTIVE',
-    ARCHIVED = 'ARCHIVED',
-}
+export { ProductVariantStatus };
 
 export interface CreateProductVariantProps {
     id: string;
@@ -51,6 +46,8 @@ export interface ProductVariantProps {
 }
 
 export class ProductVariant {
+    public static readonly MAX_NAME_LENGTH = 150; // Coincide con schema.prisma VarChar(150)
+
     private constructor(
         private readonly id: string,
         private readonly tenantId: string,
@@ -73,6 +70,8 @@ export class ProductVariant {
     ) { }
 
     static create(props: CreateProductVariantProps): ProductVariant {
+        ProductVariant.validateIdentity(props);
+
         const name = props.name.trim();
 
         if (!name) {
@@ -81,9 +80,9 @@ export class ProductVariant {
             );
         }
 
-        if (name.length > 200) {
+        if (name.length > ProductVariant.MAX_NAME_LENGTH) {
             throw new InvalidProductVariantException(
-                'El nombre de la variante no puede superar los 200 caracteres',
+                `El nombre de la variante no puede superar los ${ProductVariant.MAX_NAME_LENGTH} caracteres`,
             );
         }
 
@@ -132,6 +131,8 @@ export class ProductVariant {
     }
 
     static rehydrate(props: ProductVariantProps): ProductVariant {
+        ProductVariant.validateIdentity(props);
+
         return new ProductVariant(
             props.id,
             props.tenantId,
@@ -174,9 +175,9 @@ export class ProductVariant {
                 );
             }
 
-            if (name.length > 200) {
+            if (name.length > ProductVariant.MAX_NAME_LENGTH) {
                 throw new InvalidProductVariantException(
-                    'El nombre de la variante no puede superar los 200 caracteres',
+                    `El nombre de la variante no puede superar los ${ProductVariant.MAX_NAME_LENGTH} caracteres`,
                 );
             }
 
@@ -224,48 +225,69 @@ export class ProductVariant {
         }
 
         if (props.unitOfMeasureId !== undefined) {
-            this.unitOfMeasureId = props.unitOfMeasureId;
+            if (!props.unitOfMeasureId || !props.unitOfMeasureId.trim()) {
+                throw new InvalidProductVariantException(
+                    'La unidad de medida no puede ser vacía',
+                );
+            }
+            this.unitOfMeasureId = props.unitOfMeasureId.trim();
         }
 
         this.touch();
     }
 
+    /**
+     * Actualiza el costo referencial de la variante.
+     */
+    updateCostPrice(costPrice: MoneyVO): void {
+        this.ensureNotArchived();
+        if (!costPrice) {
+            throw new InvalidProductVariantException('El costo es obligatorio');
+        }
+        this.costPrice = costPrice;
+        this.touch();
+    }
+
     changeSku(sku: SkuVO): void {
         this.ensureNotArchived();
-
         this.sku = sku;
         this.touch();
     }
 
     markAsDefault(): void {
         this.ensureNotArchived();
-
         this.isDefault = true;
         this.touch();
     }
 
     unmarkAsDefault(): void {
         this.ensureNotArchived();
-
         this.isDefault = false;
         this.touch();
     }
 
     activate(): void {
         this.ensureNotArchived();
-
+        if (this.status === ProductVariantStatus.ACTIVE) {
+            return;
+        }
         this.status = ProductVariantStatus.ACTIVE;
         this.touch();
     }
 
     deactivate(): void {
         this.ensureNotArchived();
-
+        if (this.status === ProductVariantStatus.INACTIVE) {
+            return;
+        }
         this.status = ProductVariantStatus.INACTIVE;
         this.touch();
     }
 
     archive(): void {
+        if (this.status === ProductVariantStatus.ARCHIVED) {
+            return;
+        }
         this.status = ProductVariantStatus.ARCHIVED;
         this.archivedAt = new Date();
         this.touch();
@@ -273,6 +295,10 @@ export class ProductVariant {
 
     isActive(): boolean {
         return this.status === ProductVariantStatus.ACTIVE;
+    }
+
+    isInactive(): boolean {
+        return this.status === ProductVariantStatus.INACTIVE;
     }
 
     isArchived(): boolean {
@@ -283,6 +309,40 @@ export class ProductVariant {
         if (this.isArchived()) {
             throw new InvalidProductVariantException(
                 'No se puede modificar una variante archivada',
+            );
+        }
+    }
+
+    private static validateIdentity(props: {
+        id: string;
+        tenantId: string;
+        productId: string;
+        unitOfMeasureId: string;
+    }): void {
+        if (typeof props.id !== 'string' || !props.id.trim()) {
+            throw new InvalidProductVariantException(
+                'El identificador de la variante es obligatorio',
+            );
+        }
+
+        if (typeof props.tenantId !== 'string' || !props.tenantId.trim()) {
+            throw new InvalidProductVariantException(
+                'La variante debe pertenecer a un tenant',
+            );
+        }
+
+        if (typeof props.productId !== 'string' || !props.productId.trim()) {
+            throw new InvalidProductVariantException(
+                'La variante debe pertenecer a un producto',
+            );
+        }
+
+        if (
+            typeof props.unitOfMeasureId !== 'string' ||
+            !props.unitOfMeasureId.trim()
+        ) {
+            throw new InvalidProductVariantException(
+                'La variante debe tener una unidad de medida',
             );
         }
     }

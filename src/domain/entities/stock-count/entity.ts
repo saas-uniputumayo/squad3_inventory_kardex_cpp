@@ -1,13 +1,12 @@
 import { InvalidStockCountException } from '../../exceptions/invalid-stock-count.exception';
+import { StockCountStatus } from '../../types';
 import { StockCountLine } from './line.entity';
-import { StockCountStatus } from './types';
 
 export interface CreateStockCountProps {
     id: string;
     tenantId: string;
     warehouseId: string;
     notes?: string;
-    occurredAt?: Date;
 }
 
 export interface StockCountProps {
@@ -16,10 +15,9 @@ export interface StockCountProps {
     warehouseId: string;
     status: StockCountStatus;
     notes?: string;
-    occurredAt: Date;
     createdAt: Date;
     startedAt?: Date;
-    postedAt?: Date;
+    completedAt?: Date;
     cancelledAt?: Date;
 }
 
@@ -31,43 +29,24 @@ export class StockCount {
         private readonly tenantId: string,
         private readonly warehouseId: string,
         private status: StockCountStatus,
-        private readonly notes: string | undefined,
-        private readonly occurredAt: Date,
+        private notes: string | undefined,
         private readonly createdAt: Date,
         private startedAt: Date | undefined,
-        private postedAt: Date | undefined,
+        private completedAt: Date | undefined,
         private cancelledAt: Date | undefined,
         lines: StockCountLine[] = [],
     ) {
         this.lines = [...lines];
     }
 
-    static create(
-        props: CreateStockCountProps,
-    ): StockCount {
-        StockCount.validateIdentity(
-            props,
-        );
+    static create(props: CreateStockCountProps): StockCount {
+        StockCount.validateIdentity(props);
 
-        const notes =
-            props.notes?.trim() || undefined;
+        const notes = props.notes?.trim() || undefined;
 
         if (notes && notes.length > 1000) {
             throw new InvalidStockCountException(
                 'Las notas del conteo no pueden superar los 1000 caracteres',
-            );
-        }
-
-        const occurredAt =
-            props.occurredAt ?? new Date();
-
-        if (
-            Number.isNaN(
-                occurredAt.getTime(),
-            )
-        ) {
-            throw new InvalidStockCountException(
-                'La fecha del conteo no es válida',
             );
         }
 
@@ -77,11 +56,11 @@ export class StockCount {
             props.warehouseId,
             StockCountStatus.DRAFT,
             notes,
-            occurredAt,
             new Date(),
             undefined,
             undefined,
             undefined,
+            [],
         );
     }
 
@@ -89,16 +68,10 @@ export class StockCount {
         props: StockCountProps,
         lines: StockCountLine[] = [],
     ): StockCount {
-        StockCount.validateIdentity(
-            props,
-        );
+        StockCount.validateIdentity(props);
+        StockCount.validateStatus(props.status);
 
-        StockCount.validateStatus(
-            props.status,
-        );
-
-        const notes =
-            props.notes?.trim() || undefined;
+        const notes = props.notes?.trim() || undefined;
 
         if (notes && notes.length > 1000) {
             throw new InvalidStockCountException(
@@ -106,100 +79,63 @@ export class StockCount {
             );
         }
 
-        if (
-            Number.isNaN(
-                props.occurredAt.getTime(),
-            )
-        ) {
-            throw new InvalidStockCountException(
-                'La fecha del conteo no es válida',
-            );
-        }
-
-        if (
-            Number.isNaN(
-                props.createdAt.getTime(),
-            )
-        ) {
+        if (Number.isNaN(props.createdAt.getTime())) {
             throw new InvalidStockCountException(
                 'La fecha de creación del conteo no es válida',
             );
         }
 
         if (
-            props.status ===
-            StockCountStatus.COUNTING &&
+            props.status === StockCountStatus.IN_PROGRESS &&
             !props.startedAt
         ) {
             throw new InvalidStockCountException(
-                'Un conteo en proceso debe tener fecha de inicio',
+                'Un conteo en proceso (IN_PROGRESS) debe tener fecha de inicio (startedAt)',
             );
         }
 
         if (
-            props.status ===
-            StockCountStatus.POSTED &&
-            !props.postedAt
+            props.status === StockCountStatus.COMPLETED &&
+            !props.completedAt
         ) {
             throw new InvalidStockCountException(
-                'Un conteo publicado debe tener fecha de publicación',
+                'Un conteo completado (COMPLETED) debe tener fecha de finalización (completedAt)',
             );
         }
 
         if (
-            props.status ===
-            StockCountStatus.CANCELLED &&
+            props.status === StockCountStatus.CANCELLED &&
             !props.cancelledAt
         ) {
             throw new InvalidStockCountException(
-                'Un conteo cancelado debe tener fecha de cancelación',
+                'Un conteo cancelado (CANCELLED) debe tener fecha de cancelación (cancelledAt)',
             );
         }
 
         if (
-            props.status ===
-            StockCountStatus.DRAFT &&
-            (
-                props.startedAt ||
-                props.postedAt ||
-                props.cancelledAt
-            )
+            props.status === StockCountStatus.DRAFT &&
+            (props.startedAt || props.completedAt || props.cancelledAt)
         ) {
             throw new InvalidStockCountException(
-                'Un conteo en borrador no puede tener fechas de proceso, publicación o cancelación',
+                'Un conteo en borrador no puede tener fechas de inicio, finalización o cancelación',
             );
         }
 
         if (
-            props.status ===
-            StockCountStatus.COUNTING &&
-            (
-                props.postedAt ||
-                props.cancelledAt
-            )
-        ) {
-            throw new InvalidStockCountException(
-                'Un conteo en proceso no puede tener fecha de publicación o cancelación',
-            );
-        }
-
-        if (
-            props.status ===
-            StockCountStatus.POSTED &&
+            props.status === StockCountStatus.COMPLETED &&
             props.cancelledAt
         ) {
             throw new InvalidStockCountException(
-                'Un conteo publicado no puede estar cancelado',
+                'Un conteo completado no puede estar cancelado',
             );
         }
 
         if (
-            props.status ===
-            StockCountStatus.CANCELLED &&
-            props.postedAt
+            props.status === StockCountStatus.CANCELLED &&
+            props.completedAt
         ) {
             throw new InvalidStockCountException(
-                'Un conteo cancelado no puede estar publicado',
+                'Un conteo cancelado no puede estar completado',
             );
         }
 
@@ -209,64 +145,42 @@ export class StockCount {
             props.warehouseId,
             props.status,
             notes,
-            props.occurredAt,
             props.createdAt,
             props.startedAt,
-            props.postedAt,
+            props.completedAt,
             props.cancelledAt,
             lines,
         );
     }
 
-    addLine(
-        line: StockCountLine,
-    ): void {
-        this.ensureEditable();
+    addLine(line: StockCountLine): void {
+        this.ensureDraft();
 
-        if (
-            line.getStockCountId() !==
-            this.id
-        ) {
+        if (line.getStockCountId() !== this.id) {
             throw new InvalidStockCountException(
                 'La línea no pertenece a este conteo',
             );
         }
 
-        const duplicatedLine =
-            this.lines.some(
-                (existingLine) =>
-                    existingLine.getProductId() ===
-                    line.getProductId() &&
-                    existingLine.getVariantId() ===
-                    line.getVariantId(),
-            );
+        const duplicatedLine = this.lines.some(
+            (existingLine) =>
+                existingLine.getProductId() === line.getProductId() &&
+                existingLine.getVariantId() === line.getVariantId(),
+        );
 
         if (duplicatedLine) {
             throw new InvalidStockCountException(
-                'El producto ya existe en este conteo',
+                'La variante de producto ya existe en este conteo físico',
             );
         }
 
         this.lines.push(line);
     }
 
-    removeLine(
-        lineId: string,
-    ): void {
-        if (
-            this.status !==
-            StockCountStatus.DRAFT
-        ) {
-            throw new InvalidStockCountException(
-                'Las líneas solo pueden eliminarse mientras el conteo está en borrador',
-            );
-        }
+    removeLine(lineId: string): void {
+        this.ensureDraft();
 
-        const index =
-            this.lines.findIndex(
-                (line) =>
-                    line.getId() === lineId,
-            );
+        const index = this.lines.findIndex((line) => line.getId() === lineId);
 
         if (index === -1) {
             throw new InvalidStockCountException(
@@ -278,126 +192,94 @@ export class StockCount {
     }
 
     startCounting(): void {
-        if (
-            this.status !==
-            StockCountStatus.DRAFT
-        ) {
+        if (this.status !== StockCountStatus.DRAFT) {
             throw new InvalidStockCountException(
-                'Solo un conteo en borrador puede iniciar el conteo físico',
+                'Solo un conteo en estado DRAFT puede iniciar el conteo físico (pasar a IN_PROGRESS)',
             );
         }
 
         if (!this.lines.length) {
             throw new InvalidStockCountException(
-                'El conteo debe tener al menos una línea',
+                'El conteo debe tener al menos una línea para iniciar el conteo',
             );
         }
 
-        this.status =
-            StockCountStatus.COUNTING;
-
+        this.status = StockCountStatus.IN_PROGRESS;
         this.startedAt = new Date();
     }
 
-    post(): void {
-        if (
-            this.status !==
-            StockCountStatus.COUNTING
-        ) {
+    complete(): void {
+        if (this.status !== StockCountStatus.IN_PROGRESS) {
             throw new InvalidStockCountException(
-                'Solo un conteo en proceso puede publicarse',
+                'Solo un conteo en proceso (IN_PROGRESS) puede completarse (pasar a COMPLETED)',
             );
         }
 
-        const pendingLines =
-            this.lines.some(
-                (line) =>
-                    !line.isCounted(),
-            );
+        const hasPendingLines = this.lines.some((line) => line.isPending());
 
-        if (pendingLines) {
+        if (hasPendingLines) {
             throw new InvalidStockCountException(
-                'No se puede publicar un conteo con líneas pendientes',
+                'No se puede completar un conteo con líneas pendientes de contar',
             );
         }
 
-        this.status =
-            StockCountStatus.POSTED;
-
-        this.postedAt = new Date();
+        this.status = StockCountStatus.COMPLETED;
+        this.completedAt = new Date();
     }
 
     cancel(): void {
         if (
-            this.status !==
-            StockCountStatus.DRAFT &&
-            this.status !==
-            StockCountStatus.COUNTING
+            this.status !== StockCountStatus.DRAFT &&
+            this.status !== StockCountStatus.IN_PROGRESS
         ) {
             throw new InvalidStockCountException(
                 'El conteo no puede cancelarse en su estado actual',
             );
         }
 
-        this.status =
-            StockCountStatus.CANCELLED;
-
+        this.status = StockCountStatus.CANCELLED;
         this.cancelledAt = new Date();
+
+        for (const line of this.lines) {
+            if (!line.isApplied()) {
+                line.cancel();
+            }
+        }
     }
 
     hasDifferences(): boolean {
         return this.lines.some(
-            (line) =>
-                line.isCounted() &&
-                line.hasDifference(),
+            (line) => line.isCounted() && line.hasDifference(),
         );
     }
 
-    getLinesWithDifferences():
-        readonly StockCountLine[] {
+    getLinesWithDifferences(): readonly StockCountLine[] {
         return this.lines.filter(
-            (line) =>
-                line.isCounted() &&
-                line.hasDifference(),
+            (line) => line.isCounted() && line.hasDifference(),
         );
     }
 
     areAllLinesCounted(): boolean {
         return (
             this.lines.length > 0 &&
-            this.lines.every(
-                (line) =>
-                    line.isCounted(),
-            )
+            this.lines.every((line) => line.isCounted() || line.isApplied())
         );
     }
 
     isDraft(): boolean {
-        return (
-            this.status ===
-            StockCountStatus.DRAFT
-        );
+        return this.status === StockCountStatus.DRAFT;
     }
 
-    isCounting(): boolean {
-        return (
-            this.status ===
-            StockCountStatus.COUNTING
-        );
+    isInProgress(): boolean {
+        return this.status === StockCountStatus.IN_PROGRESS;
     }
 
-    isPosted(): boolean {
-        return (
-            this.status ===
-            StockCountStatus.POSTED
-        );
+    isCompleted(): boolean {
+        return this.status === StockCountStatus.COMPLETED;
     }
 
     isCancelled(): boolean {
-        return (
-            this.status ===
-            StockCountStatus.CANCELLED
-        );
+        return this.status === StockCountStatus.CANCELLED;
     }
 
     getId(): string {
@@ -420,10 +302,6 @@ export class StockCount {
         return this.notes;
     }
 
-    getOccurredAt(): Date {
-        return this.occurredAt;
-    }
-
     getCreatedAt(): Date {
         return this.createdAt;
     }
@@ -432,8 +310,8 @@ export class StockCount {
         return this.startedAt;
     }
 
-    getPostedAt(): Date | undefined {
-        return this.postedAt;
+    getCompletedAt(): Date | undefined {
+        return this.completedAt;
     }
 
     getCancelledAt(): Date | undefined {
@@ -444,55 +322,42 @@ export class StockCount {
         return [...this.lines];
     }
 
-    private ensureEditable(): void {
-        if (
-            this.status !==
-            StockCountStatus.DRAFT &&
-            this.status !==
-            StockCountStatus.COUNTING
-        ) {
+    private ensureDraft(): void {
+        if (this.status !== StockCountStatus.DRAFT) {
             throw new InvalidStockCountException(
-                'El conteo ya no puede modificarse en su estado actual',
+                'Las líneas solo pueden modificarse cuando el conteo está en borrador (DRAFT)',
             );
         }
     }
 
-    private static validateIdentity(
-        props: {
-            id: string;
-            tenantId: string;
-            warehouseId: string;
-        },
-    ): void {
-        if (!props.id.trim()) {
+    private static validateIdentity(props: {
+        id: string;
+        tenantId: string;
+        warehouseId: string;
+    }): void {
+        if (!props.id || !props.id.trim()) {
             throw new InvalidStockCountException(
                 'El identificador del conteo es obligatorio',
             );
         }
 
-        if (!props.tenantId.trim()) {
+        if (!props.tenantId || !props.tenantId.trim()) {
             throw new InvalidStockCountException(
                 'El conteo debe pertenecer a un tenant',
             );
         }
 
-        if (!props.warehouseId.trim()) {
+        if (!props.warehouseId || !props.warehouseId.trim()) {
             throw new InvalidStockCountException(
                 'La bodega del conteo es obligatoria',
             );
         }
     }
 
-    private static validateStatus(
-        status: StockCountStatus,
-    ): void {
-        if (
-            !Object.values(
-                StockCountStatus,
-            ).includes(status)
-        ) {
+    private static validateStatus(status: StockCountStatus): void {
+        if (!Object.values(StockCountStatus).includes(status)) {
             throw new InvalidStockCountException(
-                'El estado del conteo no es válido',
+                `El estado del conteo no es válido: ${status}`,
             );
         }
     }
