@@ -1,15 +1,7 @@
 // ============================================================================
-// REFERENCIA DE INTEGRACIÓN: SQUAD 1 (CORE) + SQUAD 3 (INVENTORY ENGINE)
-// ============================================================================
-// NOTA IMPORTANTE:
-// Este archivo es ÚNICAMENTE una referencia de integración arquitectónica entre
-// el Escuadrón 1 (Core / Multi-Tenancy / RBAC) y el Escuadrón 3 (Inventarios / Kardex).
-//
-// 1. NO reemplaza a 'schema.prisma' (el esquema general completo del SaaS).
-// 2. NO debe utilizarse directamente para ejecutar migraciones en la base de datos.
-// 3. Los modelos pertenecientes exclusivamente a otros escuadrones (E2 Contabilidad,
-//    E4 POS, E6 Facturación/Anulaciones, E7 Compras/Cartera) fueron omitidos
-//    intencionalmente para focalizar la coordinación técnica entre E1 y E3.
+// ARCHIVO: prisma/schema.prisma
+// ESQUEMA MAESTRO UNIFICADO — SAAS CONTABLE, POS Y GESTIÓN DE INVENTARIOS
+// PostgreSQL 16+ | Multi-Tenant RLS | Kardex CPP | Partida Doble
 // ============================================================================
 
 generator client {
@@ -21,15 +13,118 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-generator erd {
-  provider = "prisma-erd-generator"
-  output   = "./ERD.svg"
+// ============================================================================
+// ENUMS GLOBALES DEL SISTEMA
+// ============================================================================
+
+// --- Squad 1: Core & RBAC ---
+enum TaxRegime {
+  REGIMEN_SIMPLE
+  RESPONSABLE_IVA
+  NO_RESPONSABLE_IVA
+  GRAN_CONTRIBUYENTE
+  REGIMEN_ESPECIAL
 }
 
-// ============================================================================
-// ENUMS (DOMINIO E3 - INVENTORY ENGINE)
-// ============================================================================
+enum DocumentType {
+  CC
+  CE
+  TI
+  NIT
+  PP
+  PEP
+}
 
+enum UserRole {
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  WAREHOUSE_MANAGER
+  CASHIER
+}
+
+// --- Squad 7: Terceros, Compras & Cartera ---
+enum PartyType {
+  CUSTOMER
+  SUPPLIER
+  BOTH
+}
+
+enum PurchasePaymentType {
+  CONTADO
+  CREDITO
+}
+
+enum PurchaseStatus {
+  RECEIVED
+  VOIDED
+}
+
+enum CreditTransactionType {
+  CHARGE_CREDIT_SALE
+  CUSTOMER_PAYMENT
+  SUPPLIER_PURCHASE
+  SUPPLIER_PAYMENT
+  VOID_REVERSAL
+}
+
+enum CreditPaymentMethod {
+  EFECTIVO
+  NEQUI
+  DAVIPLATA
+  TARJETA
+  TRANSFERENCIA
+}
+
+// --- Squad 2: Motor Contable ---
+enum AccountType {
+  ACTIVO
+  PASIVO
+  PATRIMONIO
+  INGRESO
+  GASTO
+  COSTO
+}
+
+enum AccountNature {
+  D
+  C
+}
+
+enum JournalSourceDocumentType {
+  SALE_POS
+  PURCHASE
+  CUSTOMER_PAYMENT
+  SUPPLIER_PAYMENT
+  REVERSAL
+  SHRINKAGE
+  MANUAL_ADJUSTMENT
+  OPENING_BALANCE
+  INVENTORY_MOVEMENT
+}
+
+// --- Squad 4 & 6: POS & Facturación ---
+enum PosShiftStatus {
+  OPEN
+  CLOSED
+  RECONCILED
+}
+
+enum InvoicePaymentMethod {
+  EFECTIVO
+  NEQUI
+  DAVIPLATA
+  TARJETA
+  CREDITO_FIADO
+  MIXTO
+}
+
+enum InvoiceStatus {
+  ISSUED
+  VOIDED
+}
+
+// --- Squad 3: Motor de Inventario & Kardex ---
 enum ProductStatus {
   ACTIVE
   INACTIVE
@@ -169,14 +264,9 @@ enum UnitType {
 }
 
 // ============================================================================
-// MODELOS E1 (CORE) REQUERIDOS POR E3
+// CAPA 1: MODELO RAÍZ — EMPRESAS (TENANTS)
 // ============================================================================
 
-// ----------------------------------------------------------------------------
-// E1: TENANT
-// Propietario: Squad 1
-// Consumido por: Todos los modelos de E3 para aislamiento multi-tenant estricto
-// ----------------------------------------------------------------------------
 model Tenant {
   id           String    @id @default(uuid()) @db.Uuid
   nitRut       String    @unique @map("nit_rut") @db.VarChar(20)
@@ -185,18 +275,36 @@ model Tenant {
   address      String    @db.VarChar(200)
   phone        String    @db.VarChar(50)
   email        String    @db.VarChar(100)
-  countryCode  String?   @default("COL") @map("country_code") @db.VarChar(3)
-  currencyCode String?   @default("COP") @map("currency_code") @db.VarChar(3)
-  taxRegime    String?   @default("REGIMEN_SIMPLE") @map("tax_regime") @db.VarChar(30)
-  isActive     Boolean?  @default(true) @map("is_active")
-  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  countryCode  String    @default("COL") @map("country_code") @db.VarChar(3)
+  currencyCode String    @default("COP") @map("currency_code") @db.VarChar(3)
+  taxRegime    TaxRegime @default(REGIMEN_SIMPLE) @map("tax_regime")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  // Relaciones Core E1 presentes en esta vista
-  branches Branch[]
-  users    User[]
+  // Relaciones Core
+  branches        Branch[]
+  users           User[]
+  auditLogs       AuditLog[]
+  tenantSequences TenantSequence[]
 
-  // Relaciones hacia el dominio de Inventario (E3)
+  // Relaciones Terceros, Compras & Cartera (E7)
+  thirdParties       ThirdParty[]
+  purchases          Purchase[]
+  purchaseItems      PurchaseItem[]
+  creditTransactions CreditTransaction[]
+
+  // Relaciones Motor Contable (E2)
+  chartOfAccounts   ChartOfAccount[]
+  journalEntries    JournalEntry[]
+  journalEntryLines JournalEntryLine[]
+
+  // Relaciones POS & Facturación (E4/E6)
+  posShifts    PosShift[]
+  invoices     Invoice[]
+  invoiceItems InvoiceItem[]
+
+  // Relaciones Motor de Inventario & Kardex (E3)
   productCategories        ProductCategory[]
   unitOfMeasures           UnitOfMeasure[]
   products                 Product[]
@@ -215,84 +323,91 @@ model Tenant {
   inventoryOutboxEvents    InventoryOutboxEvent[]
   inventoryAuditLogs       InventoryAuditLog[]
 
-  // NOTA: Colecciones de otros squads (E2, E4, E6, E7) omitidas de este esquema de referencia.
-
   @@map("tenants")
 }
 
-// ----------------------------------------------------------------------------
-// E1: BRANCH (SUCURSAL)
-// Propietario: Squad 1
-// Consumido por: Warehouse (cada bodega física o lógica pertenece a una sucursal)
-// ----------------------------------------------------------------------------
-model Branch {
-  id        String    @id @default(uuid()) @db.Uuid
-  tenantId  String    @map("tenant_id") @db.Uuid
-  code      String    @db.VarChar(20)
-  name      String    @db.VarChar(100)
-  address   String?   @db.VarChar(200)
-  phone     String?   @db.VarChar(50)
-  isActive  Boolean?  @default(true) @map("is_active")
-  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz
+// ============================================================================
+// CAPA 2: ESTRUCTURA CORE, TERCEROS Y PLAN CONTABLE
+// ============================================================================
 
-  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users      User[]
-  warehouses Warehouse[]
+model Branch {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  code      String   @db.VarChar(20)
+  name      String   @db.VarChar(100)
+  address   String?  @db.VarChar(200)
+  phone     String?  @db.VarChar(50)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users          User[]
+  warehouses     Warehouse[]
+  journalEntries JournalEntry[]
+  posShifts      PosShift[]
+  invoices       Invoice[]
+  purchases      Purchase[]
 
   @@unique([tenantId, code], map: "uq_tenant_branch_code")
+  @@unique([tenantId, id], map: "uq_branches_tenant_id")
   @@map("branches")
 }
 
-// ----------------------------------------------------------------------------
-// E1: USER (USUARIO / AUDITORÍA OPERACIONAL)
-// Propietario: Squad 1
-// Consumido por: E3 para firmas de autor, aprobación, conteos y auditoría
-// ----------------------------------------------------------------------------
-model User {
-  id             String    @id @default(uuid()) @db.Uuid
-  tenantId       String    @map("tenant_id") @db.Uuid
-  branchId       String?   @map("branch_id") @db.Uuid
-  documentType   String    @default("CC") @map("document_type") @db.VarChar(10)
-  documentNumber String    @map("document_number") @db.VarChar(20)
-  email          String    @db.VarChar(120)
-  passwordHash   String    @map("password_hash") @db.VarChar(255)
-  fullName       String    @map("full_name") @db.VarChar(120)
-  phone          String?   @db.VarChar(50)
-  role           String    @db.VarChar(30)
-  isActive       Boolean?  @default(true) @map("is_active")
-  lastLoginAt    DateTime? @map("last_login_at") @db.Timestamptz
-  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+model ThirdParty {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  documentType   DocumentType @default(CC) @map("document_type")
+  documentNumber String       @map("document_number") @db.VarChar(20)
+  name           String       @db.VarChar(150)
+  phone          String?      @db.VarChar(50)
+  email          String?      @db.VarChar(100)
+  address        String?      @db.VarChar(200)
+  partyType      PartyType    @map("party_type")
+  creditLimit    Decimal      @default(0.00) @map("credit_limit") @db.Decimal(15, 2)
+  currentDebt    Decimal      @default(0.00) @map("current_debt") @db.Decimal(15, 2)
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  journalEntryLines  JournalEntryLine[]
+  invoices           Invoice[]
+  purchases          Purchase[]
+  creditTransactions CreditTransaction[]
 
-  // Firmas y trazabilidad operacional requeridas por E3 (Inventory Engine)
-  movementsCreated       InventoryMovement[] @relation("MovementCreatedBy")
-  movementsPosted        InventoryMovement[] @relation("MovementPostedBy")
-  movementsReversed      InventoryMovement[] @relation("MovementReversedBy")
-  transfersCreated       InventoryTransfer[] @relation("TransferCreatedBy")
-  transfersCompleted     InventoryTransfer[] @relation("TransferCompletedBy")
-  stockCountsCreated     StockCount[]        @relation("StockCountCreatedBy")
-  stockCountsCompleted   StockCount[]        @relation("StockCountCompletedBy")
-  stockCountLinesCounted StockCountLine[]    @relation("StockCountLineCountedBy")
-  inventoryAuditLogs     InventoryAuditLog[] @relation("InventoryAuditLogPerformedBy")
+  @@unique([tenantId, documentType, documentNumber], map: "uq_tenant_third_party_doc")
+  @@unique([tenantId, id], map: "uq_third_parties_tenant_id")
+  @@map("third_parties")
+}
 
-  @@unique([tenantId, email], map: "uq_tenant_user_email")
-  @@unique([tenantId, documentNumber], map: "uq_tenant_user_doc")
-  @@index([tenantId, role], map: "idx_users_tenant_role")
-  @@index([tenantId, branchId], map: "idx_users_tenant_branch")
-  @@map("users")
+model ChartOfAccount {
+  id           String        @id @default(uuid()) @db.Uuid
+  tenantId     String        @map("tenant_id") @db.Uuid
+  code         String        @db.VarChar(20)
+  name         String        @db.VarChar(150)
+  accountType  AccountType   @map("account_type")
+  nature       AccountNature
+  parentId     String?       @map("parent_id") @db.Uuid
+  isSelectable Boolean       @default(true) @map("is_selectable")
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent            ChartOfAccount?    @relation("AccountHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children          ChartOfAccount[]   @relation("AccountHierarchy")
+  journalEntryLines JournalEntryLine[]
+
+  @@unique([tenantId, code], map: "uq_tenant_account_code")
+  @@unique([tenantId, id], map: "uq_chart_tenant_id")
+  @@index([tenantId, accountType], map: "idx_chart_tenant_type")
+  @@map("chart_of_accounts")
 }
 
 // ============================================================================
-// MODELOS E3 (INVENTORY ENGINE / MULTI-BODEGA / KARDEX CPP)
-// Propietario: Squad 3
+// CAPA 3: CATÁLOGO DE PRODUCTOS E INVENTARIO (SQUAD 3)
 // ============================================================================
 
-// ----------------------------------------------------------------------------
-// E3: PRODUCT CATEGORY
-// ----------------------------------------------------------------------------
 model ProductCategory {
   id          String   @id @default(uuid()) @db.Uuid
   tenantId    String   @map("tenant_id") @db.Uuid
@@ -300,23 +415,20 @@ model ProductCategory {
   description String?  @db.Text
   parentId    String?  @map("parent_id") @db.Uuid
   isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamp(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   parent   ProductCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
   children ProductCategory[] @relation("CategoryTree")
   products Product[]
 
-  @@unique([tenantId, name])
-  @@index([tenantId, parentId])
-  @@index([tenantId, isActive])
+  @@unique([tenantId, name], map: "uq_tenant_category_name")
+  @@unique([tenantId, id], map: "uq_product_categories_tenant_id")
+  @@index([tenantId, parentId], map: "idx_category_tenant_parent")
   @@map("product_categories")
 }
 
-// ----------------------------------------------------------------------------
-// E3: UNIT OF MEASURE
-// ----------------------------------------------------------------------------
 model UnitOfMeasure {
   id               String   @id @default(uuid()) @db.Uuid
   tenantId         String   @map("tenant_id") @db.Uuid
@@ -325,25 +437,22 @@ model UnitOfMeasure {
   symbol           String   @db.VarChar(10)
   unitType         UnitType @map("unit_type")
   decimalPlaces    Int      @default(3) @map("decimal_places")
-  conversionFactor Decimal  @default(1) @map("conversion_factor") @db.Decimal(18, 6)
+  conversionFactor Decimal  @default(1.000000) @map("conversion_factor") @db.Decimal(18, 6)
   isActive         Boolean  @default(true) @map("is_active")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamp(3)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant        Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   products      Product[]
   variants      ProductVariant[]
   movementLines InventoryMovementLine[]
 
-  @@unique([tenantId, code])
-  @@index([tenantId, unitType])
-  @@index([tenantId, isActive])
+  @@unique([tenantId, code], map: "uq_tenant_uom_code")
+  @@unique([tenantId, id], map: "uq_unit_of_measures_tenant_id")
+  @@index([tenantId, unitType], map: "idx_uom_tenant_type")
   @@map("unit_of_measures")
 }
 
-// ----------------------------------------------------------------------------
-// E3: PRODUCT
-// ----------------------------------------------------------------------------
 model Product {
   id              String        @id @default(uuid()) @db.Uuid
   tenantId        String        @map("tenant_id") @db.Uuid
@@ -354,16 +463,16 @@ model Product {
   categoryId      String?       @map("category_id") @db.Uuid
   productType     ProductType   @default(STOCKABLE) @map("product_type")
   status          ProductStatus @default(ACTIVE)
-  costPrice       Decimal       @default(0) @map("cost_price") @db.Decimal(15, 4)
-  salePrice       Decimal       @default(0) @map("sale_price") @db.Decimal(15, 2)
+  costPrice       Decimal       @default(0.000000) @map("cost_price") @db.Decimal(18, 6)
+  salePrice       Decimal       @default(0.00) @map("sale_price") @db.Decimal(15, 2)
   wholesalePrice  Decimal?      @map("wholesale_price") @db.Decimal(15, 2)
   taxRate         Decimal       @default(0.19) @map("tax_rate") @db.Decimal(5, 2)
-  minStockAlert   Decimal       @default(5) @map("min_stock_alert") @db.Decimal(12, 3)
+  minStockAlert   Decimal       @default(5.000000) @map("min_stock_alert") @db.Decimal(18, 6)
   unitOfMeasureId String        @map("unit_of_measure_id") @db.Uuid
   costMethod      CostMethod    @default(WEIGHTED_AVERAGE) @map("cost_method")
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamp(3)
-  archivedAt      DateTime?     @map("archived_at") @db.Timestamp(3)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  archivedAt      DateTime?     @map("archived_at") @db.Timestamptz
 
   tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category          ProductCategory?        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -375,25 +484,16 @@ model Product {
   ledgerEntries     InventoryLedgerEntry[]
   transferLines     InventoryTransferLine[]
   stockCountLines   StockCountLine[]
+  invoiceItems      InvoiceItem[]
+  purchaseItems     PurchaseItem[]
 
-  // NOTA DE INTEGRACIÓN EXTERNA:
-  // En el esquema global existen colecciones de líneas de venta (E4/E6 InvoiceItem)
-  // y líneas de compra (E7 PurchaseItem) que referencian este modelo.
-  // Fueron omitidas de este archivo para delimitar el alcance E1 + E3.
-
-  @@unique([tenantId, sku])
-  @@index([tenantId, barcode])
-  @@index([tenantId, name])
-  @@index([tenantId, status])
-  @@index([tenantId, categoryId])
-  @@index([tenantId, unitOfMeasureId])
-  @@index([tenantId, createdAt])
+  @@unique([tenantId, sku], map: "uq_tenant_product_sku")
+  @@unique([tenantId, id], map: "uq_products_tenant_id")
+  @@index([tenantId, barcode], map: "idx_products_tenant_barcode")
+  @@index([tenantId, categoryId], map: "idx_products_tenant_category")
   @@map("products")
 }
 
-// ----------------------------------------------------------------------------
-// E3: PRODUCT VARIANT
-// ----------------------------------------------------------------------------
 model ProductVariant {
   id              String               @id @default(uuid()) @db.Uuid
   tenantId        String               @map("tenant_id") @db.Uuid
@@ -402,16 +502,16 @@ model ProductVariant {
   name            String               @db.VarChar(150)
   description     String?              @db.Text
   status          ProductVariantStatus @default(ACTIVE)
-  costPrice       Decimal              @default(0) @map("cost_price") @db.Decimal(15, 4)
-  salePrice       Decimal              @default(0) @map("sale_price") @db.Decimal(15, 2)
+  costPrice       Decimal              @default(0.000000) @map("cost_price") @db.Decimal(18, 6)
+  salePrice       Decimal              @default(0.00) @map("sale_price") @db.Decimal(15, 2)
   wholesalePrice  Decimal?             @map("wholesale_price") @db.Decimal(15, 2)
   taxRate         Decimal              @default(0.19) @map("tax_rate") @db.Decimal(5, 2)
-  minStockAlert   Decimal              @default(5) @map("min_stock_alert") @db.Decimal(12, 3)
+  minStockAlert   Decimal              @default(5.000000) @map("min_stock_alert") @db.Decimal(18, 6)
   unitOfMeasureId String               @map("unit_of_measure_id") @db.Uuid
   isDefault       Boolean              @default(false) @map("is_default")
-  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamp(3)
-  archivedAt      DateTime?            @map("archived_at") @db.Timestamp(3)
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  archivedAt      DateTime?            @map("archived_at") @db.Timestamptz
 
   tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product           Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
@@ -422,17 +522,15 @@ model ProductVariant {
   ledgerEntries     InventoryLedgerEntry[]
   transferLines     InventoryTransferLine[]
   stockCountLines   StockCountLine[]
+  invoiceItems      InvoiceItem[]
+  purchaseItems     PurchaseItem[]
 
-  @@unique([tenantId, sku])
-  @@index([tenantId, productId])
-  @@index([tenantId, status])
-  @@index([tenantId, productId, isDefault])
+  @@unique([tenantId, sku], map: "uq_tenant_variant_sku")
+  @@unique([tenantId, id], map: "uq_product_variants_tenant_id")
+  @@index([tenantId, productId], map: "idx_variants_tenant_product")
   @@map("product_variants")
 }
 
-// ----------------------------------------------------------------------------
-// E3: PRODUCT BARCODE
-// ----------------------------------------------------------------------------
 model ProductBarcode {
   id        String      @id @default(uuid()) @db.Uuid
   tenantId  String      @map("tenant_id") @db.Uuid
@@ -442,23 +540,69 @@ model ProductBarcode {
   variantId String?     @map("variant_id") @db.Uuid
   isPrimary Boolean     @default(false) @map("is_primary")
   isActive  Boolean     @default(true) @map("is_active")
-  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamp(3)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product Product?        @relation(fields: [productId], references: [id], onDelete: Restrict)
   variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
 
-  @@unique([tenantId, barcode])
-  @@index([tenantId, productId])
-  @@index([tenantId, variantId])
-  @@index([tenantId, isActive])
+  @@unique([tenantId, barcode], map: "uq_tenant_barcode")
+  @@unique([tenantId, id], map: "uq_product_barcodes_tenant_id")
+  @@index([tenantId, productId], map: "idx_barcodes_tenant_product")
+  @@index([tenantId, variantId], map: "idx_barcodes_tenant_variant")
   @@map("product_barcodes")
 }
 
-// ----------------------------------------------------------------------------
-// E3: WAREHOUSE (BODEGA)
-// ----------------------------------------------------------------------------
+// ============================================================================
+// CAPA 4: USUARIOS, BODEGAS, BALANCES Y TRASLADOS
+// ============================================================================
+
+model User {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  branchId       String?      @map("branch_id") @db.Uuid
+  documentType   DocumentType @default(CC) @map("document_type")
+  documentNumber String       @map("document_number") @db.VarChar(20)
+  email          String       @db.VarChar(120)
+  passwordHash   String       @map("password_hash") @db.VarChar(255)
+  fullName       String       @map("full_name") @db.VarChar(120)
+  phone          String?      @db.VarChar(50)
+  role           UserRole
+  isActive       Boolean      @default(true) @map("is_active")
+  lastLoginAt    DateTime?    @map("last_login_at") @db.Timestamptz
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  auditLogs              AuditLog[]
+  inventoryAuditLogs     InventoryAuditLog[] @relation("InventoryAuditLogPerformedBy")
+  journalEntriesCreated  JournalEntry[]      @relation("JournalCreatedBy")
+  shiftsAsCashier        PosShift[]          @relation("ShiftCashier")
+  shiftsClosed           PosShift[]          @relation("ShiftClosedBy")
+  invoicesCreated        Invoice[]           @relation("InvoiceCreatedBy")
+  invoicesVoided         Invoice[]           @relation("InvoiceVoidedBy")
+  purchasesCreated       Purchase[]          @relation("PurchaseCreatedBy")
+  creditTxCreated        CreditTransaction[] @relation("CreditTxCreatedBy")
+  movementsCreated       InventoryMovement[] @relation("MovementCreatedBy")
+  movementsPosted        InventoryMovement[] @relation("MovementPostedBy")
+  movementsReversed      InventoryMovement[] @relation("MovementReversedBy")
+  transfersCreated       InventoryTransfer[] @relation("TransferCreatedBy")
+  transfersCompleted     InventoryTransfer[] @relation("TransferCompletedBy")
+  stockCountsCreated     StockCount[]        @relation("StockCountCreatedBy")
+  stockCountsCompleted   StockCount[]        @relation("StockCountCompletedBy")
+  stockCountLinesCounted StockCountLine[]    @relation("StockCountLineCountedBy")
+
+  @@unique([tenantId, email], map: "uq_tenant_user_email")
+  @@unique([tenantId, documentNumber], map: "uq_tenant_user_doc")
+  @@unique([tenantId, id], map: "uq_users_tenant_id")
+  @@index([tenantId, role], map: "idx_users_tenant_role")
+  @@index([tenantId, branchId], map: "idx_users_tenant_branch")
+  @@map("users")
+}
+
 model Warehouse {
   id          String          @id @default(uuid()) @db.Uuid
   tenantId    String          @map("tenant_id") @db.Uuid
@@ -467,61 +611,158 @@ model Warehouse {
   name        String          @db.VarChar(100)
   description String?         @db.Text
   status      WarehouseStatus @default(ACTIVE)
-  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamp(3)
-  archivedAt  DateTime?       @map("archived_at") @db.Timestamp(3)
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  archivedAt  DateTime?       @map("archived_at") @db.Timestamptz
 
   tenant               Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch               Branch                 @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  branch               Branch                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
   inventoryBalances    InventoryBalance[]
   sourceTransfers      InventoryTransfer[]    @relation("TransferSourceWarehouse")
   destinationTransfers InventoryTransfer[]    @relation("TransferDestinationWarehouse")
   movements            InventoryMovement[]
   ledgerEntries        InventoryLedgerEntry[]
   stockCounts          StockCount[]
+  purchases            Purchase[]
 
-  // NOTA DE INTEGRACIÓN EXTERNA:
-  // En el esquema global existe una relación de Compras (E7 Purchase.warehouseId).
-  // Fue omitida de este archivo para mantener el scope acotado a E1 + E3.
-
-  @@unique([tenantId, code])
-  @@index([tenantId, branchId])
-  @@index([tenantId, status])
+  @@unique([tenantId, code], map: "uq_tenant_warehouse_code")
+  @@unique([tenantId, id], map: "uq_warehouses_tenant_id")
+  @@index([tenantId, branchId], map: "idx_warehouses_tenant_branch")
   @@map("warehouses")
 }
 
-// ----------------------------------------------------------------------------
-// E3: INVENTORY BALANCE
-// ----------------------------------------------------------------------------
 model InventoryBalance {
   id               String   @id @default(uuid()) @db.Uuid
   tenantId         String   @map("tenant_id") @db.Uuid
   productId        String   @map("product_id") @db.Uuid
   variantId        String   @map("variant_id") @db.Uuid
   warehouseId      String   @map("warehouse_id") @db.Uuid
-  quantityOnHand   Decimal  @default(0) @map("quantity_on_hand") @db.Decimal(18, 6)
-  reservedQuantity Decimal  @default(0) @map("reserved_quantity") @db.Decimal(18, 6)
-  averageCost      Decimal  @default(0) @map("average_cost") @db.Decimal(18, 6)
-  inventoryValue   Decimal  @default(0) @map("inventory_value") @db.Decimal(20, 4)
+  quantityOnHand   Decimal  @default(0.000000) @map("quantity_on_hand") @db.Decimal(18, 6)
+  reservedQuantity Decimal  @default(0.000000) @map("reserved_quantity") @db.Decimal(18, 6)
+  averageCost      Decimal  @default(0.000000) @map("average_cost") @db.Decimal(18, 6)
+  inventoryValue   Decimal  @default(0.0000) @map("inventory_value") @db.Decimal(20, 4)
   version          BigInt   @default(0)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamp(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product   Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
   variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
   warehouse Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
 
-  @@unique([tenantId, variantId, warehouseId])
-  @@index([tenantId, productId, warehouseId])
-  @@index([tenantId, warehouseId])
-  @@index([tenantId, variantId])
-  @@index([tenantId, warehouseId, quantityOnHand])
+  @@unique([tenantId, variantId, warehouseId], map: "uq_tenant_variant_warehouse")
+  @@unique([tenantId, id], map: "uq_inventory_balances_tenant_id")
+  @@index([tenantId, productId, warehouseId], map: "idx_balances_product_warehouse")
   @@map("inventory_balances")
 }
 
-// ----------------------------------------------------------------------------
-// E3: INVENTORY MOVEMENT
-// ----------------------------------------------------------------------------
+model InventoryTransfer {
+  id                     String         @id @default(uuid()) @db.Uuid
+  tenantId               String         @map("tenant_id") @db.Uuid
+  sourceWarehouseId      String         @map("source_warehouse_id") @db.Uuid
+  destinationWarehouseId String         @map("destination_warehouse_id") @db.Uuid
+  status                 TransferStatus @default(DRAFT)
+  referenceDocument      String?        @map("reference_document") @db.VarChar(100)
+  reason                 String?        @db.Text
+  createdById            String?        @map("created_by_id") @db.Uuid
+  completedById          String?        @map("completed_by_id") @db.Uuid
+  outboundMovementId     String?        @unique @map("outbound_movement_id") @db.Uuid
+  inboundMovementId      String?        @unique @map("inbound_movement_id") @db.Uuid
+  createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  completedAt            DateTime?      @map("completed_at") @db.Timestamptz
+
+  tenant               Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sourceWarehouse      Warehouse               @relation("TransferSourceWarehouse", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  destinationWarehouse Warehouse               @relation("TransferDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  createdBy            User?                   @relation("TransferCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  completedBy          User?                   @relation("TransferCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  outboundMovement     InventoryMovement?      @relation("TransferOutboundMovement", fields: [outboundMovementId], references: [id], onDelete: Restrict)
+  inboundMovement      InventoryMovement?      @relation("TransferInboundMovement", fields: [inboundMovementId], references: [id], onDelete: Restrict)
+  lines                InventoryTransferLine[]
+
+  @@unique([tenantId, id], map: "uq_inventory_transfers_tenant_id")
+  @@index([tenantId, sourceWarehouseId], map: "idx_transfers_source_wh")
+  @@index([tenantId, destinationWarehouseId], map: "idx_transfers_dest_wh")
+  @@map("inventory_transfers")
+}
+
+model InventoryTransferLine {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  transferId        String   @map("transfer_id") @db.Uuid
+  lineNumber        Int      @map("line_number")
+  productId         String   @map("product_id") @db.Uuid
+  variantId         String   @map("variant_id") @db.Uuid
+  quantity          Decimal  @db.Decimal(18, 6)
+  transferUnitCost  Decimal  @map("transfer_unit_cost") @db.Decimal(18, 6)
+  transferTotalCost Decimal  @map("transfer_total_cost") @db.Decimal(20, 4)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  transfer InventoryTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  product  Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant  ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([transferId, lineNumber], map: "uq_transfer_line_number")
+  @@unique([tenantId, id], map: "uq_transfer_lines_tenant_id")
+  @@map("inventory_transfer_lines")
+}
+
+model StockCount {
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @map("tenant_id") @db.Uuid
+  warehouseId       String           @map("warehouse_id") @db.Uuid
+  status            StockCountStatus @default(DRAFT)
+  referenceDocument String?          @map("reference_document") @db.VarChar(100)
+  notes             String?          @db.Text
+  createdById       String?          @map("created_by_id") @db.Uuid
+  completedById     String?          @map("completed_by_id") @db.Uuid
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  startedAt         DateTime?        @map("started_at") @db.Timestamptz
+  completedAt       DateTime?        @map("completed_at") @db.Timestamptz
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  createdBy   User?            @relation("StockCountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  completedBy User?            @relation("StockCountCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  lines       StockCountLine[]
+
+  @@unique([tenantId, id], map: "uq_stock_counts_tenant_id")
+  @@index([tenantId, warehouseId], map: "idx_stock_counts_warehouse")
+  @@map("stock_counts")
+}
+
+model StockCountLine {
+  id                 String               @id @default(uuid()) @db.Uuid
+  tenantId           String               @map("tenant_id") @db.Uuid
+  stockCountId       String               @map("stock_count_id") @db.Uuid
+  productId          String               @map("product_id") @db.Uuid
+  variantId          String               @map("variant_id") @db.Uuid
+  systemQuantity     Decimal              @map("system_quantity") @db.Decimal(18, 6)
+  countedQuantity    Decimal?             @map("counted_quantity") @db.Decimal(18, 6)
+  differenceQuantity Decimal?             @map("difference_quantity") @db.Decimal(18, 6)
+  status             StockCountLineStatus @default(PENDING)
+  countedById        String?              @map("counted_by_id") @db.Uuid
+  countedAt          DateTime?            @map("counted_at") @db.Timestamptz
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stockCount StockCount     @relation(fields: [stockCountId], references: [id], onDelete: Restrict)
+  product    Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant    ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  countedBy  User?          @relation("StockCountLineCountedBy", fields: [countedById], references: [id], onDelete: SetNull)
+
+  @@unique([stockCountId, variantId], map: "uq_stock_count_variant")
+  @@unique([tenantId, id], map: "uq_stock_count_lines_tenant_id")
+  @@map("stock_count_lines")
+}
+
+// ============================================================================
+// CAPA 5: MOVIMIENTOS, KARDEX Y OPERACIONES FINANCIERAS
+// ============================================================================
+
 model InventoryMovement {
   id                 String            @id @default(uuid()) @db.Uuid
   tenantId           String            @map("tenant_id") @db.Uuid
@@ -538,10 +779,10 @@ model InventoryMovement {
   postedById         String?           @map("posted_by_id") @db.Uuid
   reversedById       String?           @map("reversed_by_id") @db.Uuid
   reversesMovementId String?           @unique @map("reverses_movement_id") @db.Uuid
-  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamp(3)
-  postedAt           DateTime?         @map("posted_at") @db.Timestamp(3)
-  reversedAt         DateTime?         @map("reversed_at") @db.Timestamp(3)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  postedAt           DateTime?         @map("posted_at") @db.Timestamptz
+  reversedAt         DateTime?         @map("reversed_at") @db.Timestamptz
 
   tenant           Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   warehouse        Warehouse               @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
@@ -556,21 +797,12 @@ model InventoryMovement {
   ledgerEntries    InventoryLedgerEntry[]
   auditLogs        InventoryAuditLog[]
 
-  // NOTA DE DESACOPLAMIENTO:
-  // referenceId y referenceDocument vinculan lógicamente esta transacción con documentos
-  // de otros escuadrones (ej. Facturas POS de E4/E6, Facturas de compra de E7) sin acoplamiento rígido de FK.
-
-  @@index([tenantId, warehouseId, createdAt])
-  @@index([tenantId, type, createdAt])
-  @@index([tenantId, status])
-  @@index([tenantId, referenceType, referenceId])
-  @@index([tenantId, referenceDocument])
+  @@unique([tenantId, id], map: "uq_inventory_movements_tenant_id")
+  @@index([tenantId, warehouseId, createdAt], map: "idx_movements_tenant_wh_date")
+  @@index([tenantId, referenceType, referenceId], map: "idx_movements_reference")
   @@map("inventory_movements")
 }
 
-// ----------------------------------------------------------------------------
-// E3: INVENTORY MOVEMENT LINE
-// ----------------------------------------------------------------------------
 model InventoryMovementLine {
   id                   String   @id @default(uuid()) @db.Uuid
   tenantId             String   @map("tenant_id") @db.Uuid
@@ -588,7 +820,7 @@ model InventoryMovementLine {
   averageCostAfter     Decimal  @map("average_cost_after") @db.Decimal(18, 6)
   inventoryValueBefore Decimal  @map("inventory_value_before") @db.Decimal(20, 4)
   inventoryValueAfter  Decimal  @map("inventory_value_after") @db.Decimal(20, 4)
-  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamp(3)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   movement      InventoryMovement @relation(fields: [movementId], references: [id], onDelete: Restrict)
@@ -596,16 +828,12 @@ model InventoryMovementLine {
   variant       ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
   unitOfMeasure UnitOfMeasure     @relation(fields: [unitOfMeasureId], references: [id], onDelete: Restrict)
 
-  @@unique([movementId, lineNumber])
-  @@index([tenantId, productId, createdAt])
-  @@index([tenantId, variantId, createdAt])
-  @@index([tenantId, movementId])
+  @@unique([movementId, lineNumber], map: "uq_movement_line_number")
+  @@unique([tenantId, id], map: "uq_movement_lines_tenant_id")
+  @@index([tenantId, productId, createdAt], map: "idx_movement_lines_product")
   @@map("inventory_movement_lines")
 }
 
-// ----------------------------------------------------------------------------
-// E3: INVENTORY LEDGER / KARDEX (HISTÓRICO INMUTABLE)
-// ----------------------------------------------------------------------------
 model InventoryLedgerEntry {
   id                   String         @id @default(uuid()) @db.Uuid
   tenantId             String         @map("tenant_id") @db.Uuid
@@ -615,8 +843,8 @@ model InventoryLedgerEntry {
   variantId            String         @map("variant_id") @db.Uuid
   warehouseId          String         @map("warehouse_id") @db.Uuid
   movementType         MovementType   @map("movement_type")
-  quantityIn           Decimal        @default(0) @map("quantity_in") @db.Decimal(18, 6)
-  quantityOut          Decimal        @default(0) @map("quantity_out") @db.Decimal(18, 6)
+  quantityIn           Decimal        @default(0.000000) @map("quantity_in") @db.Decimal(18, 6)
+  quantityOut          Decimal        @default(0.000000) @map("quantity_out") @db.Decimal(18, 6)
   quantityDelta        Decimal        @map("quantity_delta") @db.Decimal(18, 6)
   quantityBalance      Decimal        @map("quantity_balance") @db.Decimal(18, 6)
   unitCost             Decimal        @map("unit_cost") @db.Decimal(18, 6)
@@ -628,7 +856,7 @@ model InventoryLedgerEntry {
   referenceType        ReferenceType? @map("reference_type")
   referenceId          String?        @map("reference_id") @db.Uuid
   referenceDocument    String?        @map("reference_document") @db.VarChar(100)
-  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamp(3)
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz
 
   tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   movement  InventoryMovement @relation(fields: [movementId], references: [id], onDelete: Restrict)
@@ -636,136 +864,283 @@ model InventoryLedgerEntry {
   variant   ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
   warehouse Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
 
-  @@index([tenantId, variantId, warehouseId, createdAt])
-  @@index([tenantId, productId, warehouseId, createdAt])
-  @@index([tenantId, movementId])
-  @@index([tenantId, referenceType, referenceId])
+  @@unique([tenantId, id], map: "uq_inventory_ledger_tenant_id")
+  @@index([tenantId, variantId, warehouseId, createdAt], map: "idx_ledger_variant_wh")
   @@map("inventory_ledger_entries")
 }
 
-// ----------------------------------------------------------------------------
-// E3: INVENTORY TRANSFER
-// ----------------------------------------------------------------------------
-model InventoryTransfer {
-  id                     String         @id @default(uuid()) @db.Uuid
-  tenantId               String         @map("tenant_id") @db.Uuid
-  sourceWarehouseId      String         @map("source_warehouse_id") @db.Uuid
-  destinationWarehouseId String         @map("destination_warehouse_id") @db.Uuid
-  status                 TransferStatus @default(DRAFT)
-  referenceDocument      String?        @map("reference_document") @db.VarChar(100)
-  reason                 String?        @db.Text
-  createdById            String?        @map("created_by_id") @db.Uuid
-  completedById          String?        @map("completed_by_id") @db.Uuid
-  outboundMovementId     String?        @unique @map("outbound_movement_id") @db.Uuid
-  inboundMovementId      String?        @unique @map("inbound_movement_id") @db.Uuid
-  createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt              DateTime       @updatedAt @map("updated_at") @db.Timestamp(3)
-  completedAt            DateTime?      @map("completed_at") @db.Timestamp(3)
+// ============================================================================
+// CAPA 6: CONTABILIDAD, CAJA, FACTURACIÓN Y COMPRAS
+// ============================================================================
 
-  tenant               Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sourceWarehouse      Warehouse               @relation("TransferSourceWarehouse", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
-  destinationWarehouse Warehouse               @relation("TransferDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
-  createdBy            User?                   @relation("TransferCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  completedBy          User?                   @relation("TransferCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
-  outboundMovement     InventoryMovement?      @relation("TransferOutboundMovement", fields: [outboundMovementId], references: [id], onDelete: Restrict)
-  inboundMovement      InventoryMovement?      @relation("TransferInboundMovement", fields: [inboundMovementId], references: [id], onDelete: Restrict)
-  lines                InventoryTransferLine[]
+model JournalEntry {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  tenantId           String                    @map("tenant_id") @db.Uuid
+  branchId           String?                   @map("branch_id") @db.Uuid
+  entryNumber        BigInt                    @map("entry_number")
+  entryDate          DateTime                  @default(now()) @map("entry_date") @db.Date
+  concept            String                    @db.Text
+  sourceDocumentType JournalSourceDocumentType @map("source_document_type")
+  sourceDocumentId   String?                   @map("source_document_id") @db.Uuid
+  isPosted           Boolean                   @default(true) @map("is_posted")
+  createdBy          String                    @map("created_by") @db.Uuid
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz
 
-  @@index([tenantId, sourceWarehouseId])
-  @@index([tenantId, destinationWarehouseId])
-  @@index([tenantId, status])
-  @@index([tenantId, referenceDocument])
-  @@map("inventory_transfers")
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branch             Branch?             @relation(fields: [branchId], references: [id])
+  creator            User                @relation("JournalCreatedBy", fields: [createdBy], references: [id])
+  lines              JournalEntryLine[]
+  invoices           Invoice[]
+  purchases          Purchase[]
+  creditTransactions CreditTransaction[]
+
+  @@unique([tenantId, entryNumber], map: "uq_tenant_entry_number")
+  @@unique([tenantId, id], map: "uq_journal_entries_tenant_id")
+  @@index([tenantId, entryDate], map: "idx_journal_entries_date")
+  @@map("journal_entries")
 }
 
-// ----------------------------------------------------------------------------
-// E3: INVENTORY TRANSFER LINE
-// ----------------------------------------------------------------------------
-model InventoryTransferLine {
-  id                String   @id @default(uuid()) @db.Uuid
-  tenantId          String   @map("tenant_id") @db.Uuid
-  transferId        String   @map("transfer_id") @db.Uuid
-  lineNumber        Int      @map("line_number")
-  productId         String   @map("product_id") @db.Uuid
-  variantId         String   @map("variant_id") @db.Uuid
-  quantity          Decimal  @db.Decimal(18, 6)
-  transferUnitCost  Decimal  @map("transfer_unit_cost") @db.Decimal(18, 6)
-  transferTotalCost Decimal  @map("transfer_total_cost") @db.Decimal(20, 4)
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp(3)
+model JournalEntryLine {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  journalEntryId String   @map("journal_entry_id") @db.Uuid
+  accountId      String   @map("account_id") @db.Uuid
+  thirdPartyId   String?  @map("third_party_id") @db.Uuid
+  description    String?  @db.VarChar(200)
+  debitAmount    Decimal  @default(0.00) @map("debit_amount") @db.Decimal(15, 2)
+  creditAmount   Decimal  @default(0.00) @map("credit_amount") @db.Decimal(15, 2)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  transfer InventoryTransfer @relation(fields: [transferId], references: [id], onDelete: Restrict)
-  product  Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
-  variant  ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry   @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account      ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  thirdParty   ThirdParty?    @relation(fields: [thirdPartyId], references: [id], onDelete: Restrict)
 
-  @@unique([transferId, lineNumber])
-  @@index([tenantId, productId])
-  @@index([tenantId, variantId])
-  @@map("inventory_transfer_lines")
+  @@unique([tenantId, id], map: "uq_journal_lines_tenant_id")
+  @@index([journalEntryId], map: "idx_jel_entry")
+  @@index([tenantId, accountId], map: "idx_jel_account")
+  @@map("journal_entry_lines")
 }
 
-// ----------------------------------------------------------------------------
-// E3: STOCK COUNT (CONTEO FÍSICO DE INVENTARIO)
-// ----------------------------------------------------------------------------
-model StockCount {
-  id                String           @id @default(uuid()) @db.Uuid
-  tenantId          String           @map("tenant_id") @db.Uuid
-  warehouseId       String           @map("warehouse_id") @db.Uuid
-  status            StockCountStatus @default(DRAFT)
-  referenceDocument String?          @map("reference_document") @db.VarChar(100)
-  notes             String?          @db.Text
-  createdById       String?          @map("created_by_id") @db.Uuid
-  completedById     String?          @map("completed_by_id") @db.Uuid
-  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamp(3)
-  startedAt         DateTime?        @map("started_at") @db.Timestamp(3)
-  completedAt       DateTime?        @map("completed_at") @db.Timestamp(3)
+model PosShift {
+  id                String         @id @default(uuid()) @db.Uuid
+  tenantId          String         @map("tenant_id") @db.Uuid
+  branchId          String         @map("branch_id") @db.Uuid
+  cashierId         String         @map("cashier_id") @db.Uuid
+  shiftNumber       BigInt         @map("shift_number")
+  openingTime       DateTime       @default(now()) @map("opening_time") @db.Timestamptz
+  closingTime       DateTime?      @map("closing_time") @db.Timestamptz
+  initialCash       Decimal        @default(0.00) @map("initial_cash") @db.Decimal(15, 2)
+  totalSales        Decimal        @default(0.00) @map("total_sales") @db.Decimal(15, 2)
+  totalCashSales    Decimal        @default(0.00) @map("total_cash_sales") @db.Decimal(15, 2)
+  totalDigitalSales Decimal        @default(0.00) @map("total_digital_sales") @db.Decimal(15, 2)
+  totalCreditSales  Decimal        @default(0.00) @map("total_credit_sales") @db.Decimal(15, 2)
+  expectedCash      Decimal?       @map("expected_cash") @db.Decimal(15, 2)
+  actualCash        Decimal?       @map("actual_cash") @db.Decimal(15, 2)
+  difference        Decimal?       @db.Decimal(15, 2)
+  status            PosShiftStatus @default(OPEN)
+  closedById        String?        @map("closed_by") @db.Uuid
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz
 
-  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  warehouse   Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
-  createdBy   User?            @relation("StockCountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  completedBy User?            @relation("StockCountCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
-  lines       StockCountLine[]
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branch   Branch    @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  cashier  User      @relation("ShiftCashier", fields: [cashierId], references: [id])
+  closedBy User?     @relation("ShiftClosedBy", fields: [closedById], references: [id])
+  invoices Invoice[]
 
-  @@index([tenantId, warehouseId])
-  @@index([tenantId, status])
-  @@index([tenantId, referenceDocument])
-  @@map("stock_counts")
+  @@unique([tenantId, shiftNumber], map: "uq_tenant_shift_number")
+  @@unique([tenantId, id], map: "uq_pos_shifts_tenant_id")
+  @@map("pos_shifts")
 }
 
-// ----------------------------------------------------------------------------
-// E3: STOCK COUNT LINE
-// ----------------------------------------------------------------------------
-model StockCountLine {
-  id                 String               @id @default(uuid()) @db.Uuid
-  tenantId           String               @map("tenant_id") @db.Uuid
-  stockCountId       String               @map("stock_count_id") @db.Uuid
-  productId          String               @map("product_id") @db.Uuid
-  variantId          String               @map("variant_id") @db.Uuid
-  systemQuantity     Decimal              @map("system_quantity") @db.Decimal(18, 6)
-  countedQuantity    Decimal?             @map("counted_quantity") @db.Decimal(18, 6)
-  differenceQuantity Decimal?             @map("difference_quantity") @db.Decimal(18, 6)
-  status             StockCountLineStatus @default(PENDING)
-  countedById        String?              @map("counted_by_id") @db.Uuid
-  countedAt          DateTime?            @map("counted_at") @db.Timestamp(3)
-  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt          DateTime             @updatedAt @map("updated_at") @db.Timestamp(3)
+model Invoice {
+  id               String               @id @default(uuid()) @db.Uuid
+  tenantId         String               @map("tenant_id") @db.Uuid
+  branchId         String               @map("branch_id") @db.Uuid
+  posShiftId       String?              @map("pos_shift_id") @db.Uuid
+  consecutive      String               @db.VarChar(50)
+  customerId       String?              @map("customer_id") @db.Uuid
+  customerName     String               @default("Consumidor Final") @map("customer_name") @db.VarChar(150)
+  customerDocument String               @default("222222222") @map("customer_document") @db.VarChar(20)
+  subtotal         Decimal              @db.Decimal(15, 2)
+  discountTotal    Decimal              @default(0.00) @map("discount_total") @db.Decimal(15, 2)
+  taxTotal         Decimal              @map("tax_total") @db.Decimal(15, 2)
+  total            Decimal              @db.Decimal(15, 2)
+  paymentMethod    InvoicePaymentMethod @map("payment_method")
+  cashTendered     Decimal?             @map("cash_tendered") @db.Decimal(15, 2)
+  changeGiven      Decimal?             @map("change_given") @db.Decimal(15, 2)
+  journalEntryId   String?              @map("journal_entry_id") @db.Uuid
+  status           InvoiceStatus        @default(ISSUED)
+  voidReason       String?              @map("void_reason") @db.Text
+  voidedBy         String?              @map("voided_by") @db.Uuid
+  voidedAt         DateTime?            @map("voided_at") @db.Timestamptz
+  idempotencyKey   String?              @unique @map("idempotency_key") @db.Uuid
+  createdBy        String               @map("created_by") @db.Uuid
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz
 
-  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  stockCount StockCount     @relation(fields: [stockCountId], references: [id], onDelete: Restrict)
-  product    Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
-  variant    ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  countedBy  User?          @relation("StockCountLineCountedBy", fields: [countedById], references: [id], onDelete: SetNull)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  posShift     PosShift?     @relation(fields: [posShiftId], references: [id])
+  customer     ThirdParty?   @relation(fields: [customerId], references: [id])
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id])
+  creator      User          @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
+  voider       User?         @relation("InvoiceVoidedBy", fields: [voidedBy], references: [id])
+  items        InvoiceItem[]
 
-  @@unique([stockCountId, variantId])
-  @@index([tenantId, productId])
-  @@index([tenantId, variantId])
-  @@map("stock_count_lines")
+  @@unique([tenantId, consecutive], map: "uq_tenant_invoice_consecutive")
+  @@unique([tenantId, id], map: "uq_invoices_tenant_id")
+  @@map("invoices")
 }
 
-// ----------------------------------------------------------------------------
-// E3: INVENTORY IDEMPOTENCY KEY
-// ----------------------------------------------------------------------------
+model InvoiceItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenantId       String  @map("tenant_id") @db.Uuid
+  invoiceId      String  @map("invoice_id") @db.Uuid
+  productId      String  @map("product_id") @db.Uuid
+  variantId      String  @map("variant_id") @db.Uuid
+  productName    String  @map("product_name") @db.VarChar(150)
+  productSku     String  @map("product_sku") @db.VarChar(50)
+  quantity       Decimal @db.Decimal(18, 6)
+  unitOfMeasure  String  @default("UNIDAD") @map("unit_of_measure") @db.VarChar(20)
+  unitPrice      Decimal @map("unit_price") @db.Decimal(15, 2)
+  unitCost       Decimal @map("unit_cost") @db.Decimal(18, 6)
+  discountRate   Decimal @default(0.00) @map("discount_rate") @db.Decimal(5, 2)
+  taxRate        Decimal @default(0.19) @map("tax_rate") @db.Decimal(5, 2)
+  subtotal       Decimal @db.Decimal(15, 2)
+  discountAmount Decimal @default(0.00) @map("discount_amount") @db.Decimal(15, 2)
+  taxAmount      Decimal @map("tax_amount") @db.Decimal(15, 2)
+  total          Decimal @db.Decimal(15, 2)
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  invoice Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id], map: "uq_invoice_items_tenant_id")
+  @@index([invoiceId], map: "idx_invoice_items_invoice")
+  @@map("invoice_items")
+}
+
+model Purchase {
+  id                    String              @id @default(uuid()) @db.Uuid
+  tenantId              String              @map("tenant_id") @db.Uuid
+  branchId              String              @map("branch_id") @db.Uuid
+  warehouseId           String              @map("warehouse_id") @db.Uuid
+  supplierId            String              @map("supplier_id") @db.Uuid
+  supplierInvoiceNumber String              @map("supplier_invoice_number") @db.VarChar(50)
+  purchaseDate          DateTime            @default(now()) @map("purchase_date") @db.Date
+  subtotal              Decimal             @db.Decimal(15, 2)
+  taxTotal              Decimal             @map("tax_total") @db.Decimal(15, 2)
+  grandTotal            Decimal             @map("grand_total") @db.Decimal(15, 2)
+  paymentType           PurchasePaymentType @map("payment_type")
+  dueDate               DateTime?           @map("due_date") @db.Date
+  status                PurchaseStatus      @default(RECEIVED)
+  voidReason            String?             @map("void_reason") @db.Text
+  journalEntryId        String?             @map("journal_entry_id") @db.Uuid
+  createdBy             String              @map("created_by") @db.Uuid
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branch       Branch         @relation(fields: [branchId], references: [id])
+  warehouse    Warehouse      @relation(fields: [warehouseId], references: [id])
+  supplier     ThirdParty     @relation(fields: [supplierId], references: [id])
+  journalEntry JournalEntry?  @relation(fields: [journalEntryId], references: [id])
+  creator      User           @relation("PurchaseCreatedBy", fields: [createdBy], references: [id])
+  items        PurchaseItem[]
+
+  @@unique([tenantId, supplierId, supplierInvoiceNumber], map: "uq_tenant_supplier_inv")
+  @@unique([tenantId, id], map: "uq_purchases_tenant_id")
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id            String  @id @default(uuid()) @db.Uuid
+  tenantId      String  @map("tenant_id") @db.Uuid
+  purchaseId    String  @map("purchase_id") @db.Uuid
+  productId     String  @map("product_id") @db.Uuid
+  variantId     String  @map("variant_id") @db.Uuid
+  productName   String  @map("product_name") @db.VarChar(150)
+  productSku    String  @map("product_sku") @db.VarChar(50)
+  quantity      Decimal @db.Decimal(18, 6)
+  unitOfMeasure String  @default("UNIDAD") @map("unit_of_measure") @db.VarChar(20)
+  unitCost      Decimal @map("unit_cost") @db.Decimal(18, 6)
+  taxRate       Decimal @default(0.19) @map("tax_rate") @db.Decimal(5, 2)
+  subtotal      Decimal @db.Decimal(15, 2)
+  taxAmount     Decimal @map("tax_amount") @db.Decimal(15, 2)
+  total         Decimal @db.Decimal(15, 2)
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  purchase Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant  ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, id], map: "uq_purchase_items_tenant_id")
+  @@index([purchaseId], map: "idx_purchase_items_purchase")
+  @@map("purchase_items")
+}
+
+model CreditTransaction {
+  id               String                @id @default(uuid()) @db.Uuid
+  tenantId         String                @map("tenant_id") @db.Uuid
+  thirdPartyId     String                @map("third_party_id") @db.Uuid
+  transactionType  CreditTransactionType @map("transaction_type")
+  sourceDocumentId String?               @map("source_document_id") @db.Uuid
+  amount           Decimal               @db.Decimal(15, 2)
+  balanceAfter     Decimal               @map("balance_after") @db.Decimal(15, 2)
+  paymentMethod    CreditPaymentMethod   @default(EFECTIVO) @map("payment_method")
+  receiptNumber    String?               @map("receipt_number") @db.VarChar(50)
+  notes            String?               @db.Text
+  journalEntryId   String?               @map("journal_entry_id") @db.Uuid
+  createdBy        String                @map("created_by") @db.Uuid
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  thirdParty   ThirdParty    @relation(fields: [thirdPartyId], references: [id])
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id])
+  creator      User          @relation("CreditTxCreatedBy", fields: [createdBy], references: [id])
+
+  @@unique([tenantId, id], map: "uq_credit_tx_tenant_id")
+  @@index([tenantId, thirdPartyId, createdAt], map: "idx_credit_tx_tenant_third")
+  @@map("credit_transactions")
+}
+
+// ============================================================================
+// CAPA 7: RESILIENCIA, AUDITORÍA & EVENT-DRIVEN (SQUAD 1 & SQUAD 3)
+// ============================================================================
+
+model TenantSequence {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  sequenceKey  String @map("sequence_key") @db.VarChar(50)
+  currentValue BigInt @default(0) @map("current_value")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, sequenceKey], map: "uq_tenant_sequence")
+  @@unique([tenantId, id], map: "uq_tenant_sequences_tenant_id")
+  @@map("tenant_sequences")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(50)
+  entityName String   @map("entity_name") @db.VarChar(50)
+  entityId   String   @map("entity_id") @db.Uuid
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.VarChar(300)
+  details    Json     @default("{}") @db.JsonB
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, id], map: "uq_audit_logs_tenant_id")
+  @@index([tenantId, entityName, entityId], map: "idx_audit_tenant_entity")
+  @@map("audit_logs")
+}
+
 model InventoryIdempotencyKey {
   id           String    @id @default(uuid()) @db.Uuid
   tenantId     String    @map("tenant_id") @db.Uuid
@@ -776,21 +1151,16 @@ model InventoryIdempotencyKey {
   responseBody Json?     @map("response_body") @db.JsonB
   resourceType String?   @map("resource_type") @db.VarChar(100)
   resourceId   String?   @map("resource_id") @db.Uuid
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp(3)
-  expiresAt    DateTime? @map("expires_at") @db.Timestamp(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, key])
-  @@index([tenantId, operation])
-  @@index([tenantId, resourceType, resourceId])
-  @@index([expiresAt])
+  @@unique([tenantId, key], map: "uq_inventory_idempotency_key")
+  @@unique([tenantId, id], map: "uq_inventory_idempotency_tenant_id")
   @@map("inventory_idempotency_keys")
 }
 
-// ----------------------------------------------------------------------------
-// E3: INVENTORY OUTBOX EVENT (PATRÓN TRANSACCIONAL EVENT-DRIVEN)
-// ----------------------------------------------------------------------------
 model InventoryOutboxEvent {
   id            String            @id @default(uuid()) @db.Uuid
   tenantId      String            @map("tenant_id") @db.Uuid
@@ -800,23 +1170,19 @@ model InventoryOutboxEvent {
   payload       Json              @db.JsonB
   status        OutboxEventStatus @default(PENDING)
   attempts      Int               @default(0)
-  availableAt   DateTime          @default(now()) @map("available_at") @db.Timestamp(3)
-  processedAt   DateTime?         @map("processed_at") @db.Timestamp(3)
+  availableAt   DateTime          @default(now()) @map("available_at") @db.Timestamptz
+  processedAt   DateTime?         @map("processed_at") @db.Timestamptz
   lastError     String?           @map("last_error") @db.Text
-  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamp(3)
-  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamp(3)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId, status, availableAt])
-  @@index([tenantId, aggregateType, aggregateId])
-  @@index([tenantId, eventType])
+  @@unique([tenantId, id], map: "uq_inventory_outbox_tenant_id")
+  @@index([tenantId, status, availableAt], map: "idx_outbox_tenant_status")
   @@map("inventory_outbox_events")
 }
 
-// ----------------------------------------------------------------------------
-// E3: INVENTORY AUDIT LOG
-// ----------------------------------------------------------------------------
 model InventoryAuditLog {
   id            String      @id @default(uuid()) @db.Uuid
   tenantId      String      @map("tenant_id") @db.Uuid
@@ -830,100 +1196,13 @@ model InventoryAuditLog {
   reason        String?     @db.Text
   ipAddress     String?     @map("ip_address") @db.VarChar(64)
   userAgent     String?     @map("user_agent") @db.Text
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamp(3)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
 
   tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   movement    InventoryMovement? @relation(fields: [movementId], references: [id], onDelete: Restrict)
   performedBy User?              @relation("InventoryAuditLogPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
 
-  @@index([tenantId, entityType, entityId])
-  @@index([tenantId, movementId])
-  @@index([tenantId, performedById])
-  @@index([tenantId, createdAt])
+  @@unique([tenantId, id], map: "uq_inventory_audit_tenant_id")
+  @@index([tenantId, entityType, entityId], map: "idx_inv_audit_entity")
   @@map("inventory_audit_logs")
 }
-
-// ============================================================================
-// INTEGRATION NOTES: COORDINACIÓN TÉCNICA E1 (CORE) <-> E3 (INVENTORY)
-// ============================================================================
-//
-// 1. MODELOS DE E1 QUE E3 NECESITA CONSUMIR:
-//    - Tenant (`tenants`):
-//        * Obligatorio para todas las entidades de E3 (`tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE`).
-//        * Permite la aplicación de políticas RLS transparentes en PostgreSQL.
-//    - Branch (`branches`):
-//        * Cada Warehouse de E3 pertenece a una Branch de E1 (`branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE`).
-//        * Permite agrupar bodegas por sucursal física o canal de distribución.
-//    - User (`users`):
-//        * Firmas operacionales requeridas para auditoría inmutable e integridad:
-//            - `InventoryMovement.created_by_id` -> User (ON DELETE SET NULL)
-//            - `InventoryMovement.posted_by_id` -> User (ON DELETE SET NULL)
-//            - `InventoryMovement.reversed_by_id` -> User (ON DELETE SET NULL)
-//            - `InventoryTransfer.created_by_id` -> User (ON DELETE SET NULL)
-//            - `InventoryTransfer.completed_by_id` -> User (ON DELETE SET NULL)
-//            - `StockCount.created_by_id` -> User (ON DELETE SET NULL)
-//            - `StockCount.completed_by_id` -> User (ON DELETE SET NULL)
-//            - `StockCountLine.counted_by_id` -> User (ON DELETE SET NULL)
-//            - `InventoryAuditLog.performed_by_id` -> User (ON DELETE SET NULL)
-//
-// 2. MODELOS DE E3 INCLUIDOS EN ESTE ESQUEMA (17 modelos):
-//    - Catálogo: `ProductCategory`, `UnitOfMeasure`, `Product`, `ProductVariant`, `ProductBarcode`.
-//    - Bodegas & Balances: `Warehouse`, `InventoryBalance`.
-//    - Movimientos & Kardex: `InventoryMovement`, `InventoryMovementLine`, `InventoryLedgerEntry`.
-//    - Traslados: `InventoryTransfer`, `InventoryTransferLine`.
-//    - Conteo Físico: `StockCount`, `StockCountLine`.
-//    - Concurrencia & Resiliencia: `InventoryIdempotencyKey`, `InventoryOutboxEvent`, `InventoryAuditLog`.
-//
-// 3. DEPENDENCIAS DE E3 HACIA OTROS SQUADS OMITIDAS EN ESTE DOCUMENTO:
-//    - Squad 4/6 (POS & Facturación):
-//        * `InvoiceItem.product_id -> Product`: Omitida la colección inversa `Product.invoiceItems`.
-//        * En `InventoryMovement` y `InventoryLedgerEntry`, las ventas POS se referencian mediante
-//          desacoplamiento lógico: `referenceType = POS_SALE`, `referenceId = invoice.id` (UUID).
-//    - Squad 7 (Compras y Proveedores):
-//        * `PurchaseItem.product_id -> Product`: Omitida la colección inversa `Product.purchaseItems`.
-//        * `Purchase.warehouse_id -> Warehouse`: Omitida la colección inversa `Warehouse.purchases`.
-//        * En `InventoryMovement`, las recepciones de compra se referencian mediante desacoplamiento lógico:
-//          `referenceType = PURCHASE`, `referenceId = purchase.id` (UUID).
-//    - Squad 2 (Motor Contable):
-//        * Los asientos automáticos derivados del Kardex/Movimientos se generarán asíncronamente
-//          a través de los eventos de `InventoryOutboxEvent` hacia `JournalEntry`, sin acoplamiento
-//          transaccional directo de FK.
-//    - Squad 1 (Core):
-//        * Se omitió el modelo `AuditLog` global de E1, ya que E3 registra su trazabilidad detallada
-//          a nivel de dominio en `InventoryAuditLog`.
-//
-// 4. CONSTRAINTS DE POSTGRESQL QUE REQUIEREN MIGRATION SQL EN E3:
-//    - CHECK Barcode XOR:
-//        ALTER TABLE product_barcodes ADD CONSTRAINT product_barcodes_product_or_variant_check
-//        CHECK ((product_id IS NOT NULL AND variant_id IS NULL) OR (product_id IS NULL AND variant_id IS NOT NULL));
-//    - CHECK Bodegas distintas en traslados:
-//        ALTER TABLE inventory_transfers ADD CONSTRAINT inventory_transfers_different_warehouses_check
-//        CHECK (source_warehouse_id <> destination_warehouse_id);
-//    - CHECK Cantidades no negativas:
-//        ALTER TABLE inventory_balances ADD CONSTRAINT inventory_balances_quantity_non_negative_check CHECK (quantity_on_hand >= 0);
-//        ALTER TABLE inventory_balances ADD CONSTRAINT inventory_balances_reserved_non_negative_check CHECK (reserved_quantity >= 0);
-//        ALTER TABLE inventory_movement_lines ADD CONSTRAINT inventory_movement_lines_quantity_positive_check CHECK (quantity > 0);
-//        ALTER TABLE inventory_transfer_lines ADD CONSTRAINT inventory_transfer_lines_quantity_positive_check CHECK (quantity > 0);
-//    - Índice Parcial (Un solo variant default activo por producto):
-//        CREATE UNIQUE INDEX product_variants_one_default_per_product_idx
-//        ON product_variants(tenant_id, product_id)
-//        WHERE is_default = TRUE AND archived_at IS NULL;
-//    - Row Level Security (RLS) en todas las tablas de E3:
-//        ALTER TABLE <tabla_e3> ENABLE ROW LEVEL SECURITY;
-//        ALTER TABLE <tabla_e3> FORCE ROW LEVEL SECURITY;
-//        CREATE POLICY tenant_isolation_<tabla_e3> ON <tabla_e3>
-//        FOR ALL USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-//        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
-//
-// 5. PUNTOS DE DECISIÓN CLAVE PARA REVISIÓN CON SQUAD 1:
-//    - Propagación de Tenant ID:
-//        Squad 1 definirá cómo se inyectará `app.current_tenant_id` en las conexiones del pool
-//        (ej. mediante Prisma Client Extension con `$queryRawUnsafe("SET LOCAL app.current_tenant_id = ...")`
-//        o AsyncLocalStorage en NestJS).
-//    - Políticas de borrado (ON DELETE):
-//        E3 propone `ON DELETE CASCADE` para borrado de Tenants (limpieza total), pero `ON DELETE SET NULL`
-//        en las referencias de usuario en movimientos y kardex para preservar el historial auditable
-//        incluso si un usuario es dado de baja en el sistema.
-//    - Permisos Granulares RBAC por Bodega:
-//        Revisar con Squad 1 si los roles de usuario (`WAREHOUSE_MANAGER`, etc.) requerirán una tabla intermedia
-//        `user_warehouses` (manejada por E1) para autorizar accesos a nivel de bodega específica en E3.
