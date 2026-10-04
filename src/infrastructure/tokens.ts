@@ -1,0 +1,11 @@
+export const PRODUCT_REPOSITORY_PORT = Symbol('ProductRepositoryPort');
+export const PRODUCT_VARIANT_REPOSITORY_PORT = Symbol('ProductVariantRepositoryPort');
+export const WAREHOUSE_REPOSITORY_PORT = Symbol('WarehouseRepositoryPort');
+export const UNIT_OF_MEASURE_REPOSITORY_PORT = Symbol('UnitOfMeasureRepositoryPort');
+export const INVENTORY_BALANCE_REPOSITORY_PORT = Symbol('InventoryBalanceRepositoryPort');
+export const INVENTORY_MOVEMENT_REPOSITORY_PORT = Symbol('InventoryMovementRepositoryPort');
+export const INVENTORY_LEDGER_REPOSITORY_PORT = Symbol('InventoryLedgerRepositoryPort');
+export const INVENTORY_TRANSFER_REPOSITORY_PORT = Symbol('InventoryTransferRepositoryPort');
+export const STOCK_COUNT_REPOSITORY_PORT = Symbol('StockCountRepositoryPort');
+export const UNIT_OF_WORK_PORT = Symbol('UnitOfWorkPort');
+export const IDEMPOTENCY_PORT = Symbol('IdempotencyPort');
