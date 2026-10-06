@@ -48,25 +48,19 @@ export class ApplyStockCountService implements ApplyStockCountUseCase {
 
     async execute(command: ApplyStockCountCommand): Promise<ApplyStockCountResult> {
         if (command.idempotencyKey) {
-            const cached = await this.idempotencyPort.get<ApplyStockCountResult>(
-                command.tenantId,
-                command.idempotencyKey,
-            );
+            const lock = await this.idempotencyPort.acquire<ApplyStockCountResult>({
+                tenantId: command.tenantId,
+                key: command.idempotencyKey,
+                operation: 'APPLY_STOCK_COUNT',
+            });
 
-            if (cached) {
-                if (cached.status === IdempotencyStatus.COMPLETED && cached.response) {
-                    return cached.response;
-                }
-                if (cached.status === IdempotencyStatus.STARTED) {
-                    throw new IdempotencyConflictException(
-                        command.idempotencyKey,
-                        'APPLY_STOCK_COUNT',
-                    );
-                }
+            if (lock.completed && lock.response) {
+                return lock.response;
             }
         }
 
-        const result = await this.unitOfWork.execute(async (tx) => {
+        try {
+            const result = await this.unitOfWork.execute(async (tx) => {
             const stockCount = await tx.stockCountRepository.findById(
                 command.tenantId,
                 command.stockCountId,
@@ -76,7 +70,7 @@ export class ApplyStockCountService implements ApplyStockCountUseCase {
                 throw new StockCountNotFoundException(command.stockCountId);
             }
 
-            const warehouse = await this.warehouseRepository.findById(
+            const warehouse = await tx.warehouseRepository.findById(
                 command.tenantId,
                 stockCount.getWarehouseId(),
             );
@@ -422,7 +416,7 @@ export class ApplyStockCountService implements ApplyStockCountUseCase {
                     };
                 });
 
-            return {
+            const stockCountResult: ApplyStockCountResult = {
                 stockCountId: stockCount.getId(),
                 status: stockCount.getStatus(),
                 totalLines: stockCount.getLines().length,
@@ -430,6 +424,18 @@ export class ApplyStockCountService implements ApplyStockCountUseCase {
                 lines: linesResult,
                 completedAt: stockCount.getCompletedAt() ?? now,
             };
+
+            if (command.idempotencyKey && tx.idempotencyRepository) {
+                await tx.idempotencyRepository.save({
+                    tenantId: command.tenantId,
+                    key: command.idempotencyKey,
+                    operation: 'APPLY_STOCK_COUNT',
+                    response: stockCountResult,
+                    resourceId: stockCount.getId(),
+                });
+            }
+
+            return stockCountResult;
         });
 
         if (command.idempotencyKey) {
@@ -438,9 +444,16 @@ export class ApplyStockCountService implements ApplyStockCountUseCase {
                 key: command.idempotencyKey,
                 operation: 'APPLY_STOCK_COUNT',
                 response: result,
+                resourceId: result.stockCountId,
             });
         }
 
         return result;
+    } catch (error) {
+        if (command.idempotencyKey && !(error instanceof IdempotencyConflictException)) {
+            await this.idempotencyPort.release(command.tenantId, command.idempotencyKey).catch(() => {});
+        }
+        throw error;
     }
+}
 }

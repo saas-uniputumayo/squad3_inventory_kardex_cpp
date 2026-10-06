@@ -42,21 +42,14 @@ export class DispatchStockService implements DispatchStockUseCase {
 
     async execute(command: DispatchStockCommand): Promise<DispatchStockResult> {
         if (command.idempotencyKey) {
-            const cached = await this.idempotencyPort.get<DispatchStockResult>(
-                command.tenantId,
-                command.idempotencyKey,
-            );
+            const lock = await this.idempotencyPort.acquire<DispatchStockResult>({
+                tenantId: command.tenantId,
+                key: command.idempotencyKey,
+                operation: 'DISPATCH_STOCK',
+            });
 
-            if (cached) {
-                if (cached.status === IdempotencyStatus.COMPLETED && cached.response) {
-                    return cached.response;
-                }
-                if (cached.status === IdempotencyStatus.STARTED) {
-                    throw new IdempotencyConflictException(
-                        command.idempotencyKey,
-                        'DISPATCH_STOCK',
-                    );
-                }
+            if (lock.completed && lock.response) {
+                return lock.response;
             }
         }
 
@@ -118,8 +111,9 @@ export class DispatchStockService implements DispatchStockUseCase {
         const lineResults: DispatchStockLineResult[] = [];
         let totalCostAccumulator = new Decimal(0);
 
-        const result = await this.unitOfWork.execute(async (tx) => {
-            let lineNumber = 1;
+        try {
+            const result = await this.unitOfWork.execute(async (tx) => {
+                let lineNumber = 1;
 
             for (const line of resolvedLines) {
                 const balance = await tx.inventoryBalanceRepository.findForUpdate(
@@ -146,6 +140,8 @@ export class DispatchStockService implements DispatchStockUseCase {
                     .getAmount()
                     .toFixed(balance.getDecimalPlaces());
 
+                const previousAverageCostVO = balance.getAverageCost();
+                const previousInventoryValueVO = balance.getInventoryValue();
                 const unitCostVO = balance.getAverageCost();
 
                 const dispatchValueVO = balance.dispatch(quantityVO);
@@ -199,6 +195,10 @@ export class DispatchStockService implements DispatchStockUseCase {
                     balanceQuantity: balance.getQuantityOnHand(),
                     balanceValue: balance.getInventoryValue(),
                     balanceAverageCost: balance.getAverageCost(),
+                    averageCostBefore: previousAverageCostVO,
+                    averageCostAfter: balance.getAverageCost(),
+                    inventoryValueBefore: previousInventoryValueVO,
+                    inventoryValueAfter: balance.getInventoryValue(),
                     referenceType: command.referenceType ?? ReferenceType.POS_SALE,
                     referenceId: command.referenceId,
                     referenceDocument: command.referenceDocument,
@@ -255,6 +255,16 @@ export class DispatchStockService implements DispatchStockUseCase {
                 createdAt: movement.getCreatedAt(),
             };
 
+            if (command.idempotencyKey && tx.idempotencyRepository) {
+                await tx.idempotencyRepository.save({
+                    tenantId: command.tenantId,
+                    key: command.idempotencyKey,
+                    operation: 'DISPATCH_STOCK',
+                    response: dispatchResult,
+                    resourceId: movementId,
+                });
+            }
+
             return dispatchResult;
         });
 
@@ -269,5 +279,11 @@ export class DispatchStockService implements DispatchStockUseCase {
         }
 
         return result;
+    } catch (error) {
+        if (command.idempotencyKey && !(error instanceof IdempotencyConflictException)) {
+            await this.idempotencyPort.release(command.tenantId, command.idempotencyKey).catch(() => {});
+        }
+        throw error;
     }
+}
 }

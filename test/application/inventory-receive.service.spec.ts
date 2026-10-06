@@ -1,4 +1,5 @@
 import { ReceiveStockService } from '../../src/application/services/inventory/receive-stock.service';
+import { IdempotencyConflictException } from '../../src/application/exceptions/idempotency-conflict.exception';
 import { InventoryBalance } from '../../src/domain/entities/inventory-balance/entity';
 import { Product } from '../../src/domain/entities/product/entity';
 import { ProductVariant } from '../../src/domain/entities/product/variant.entity';
@@ -198,5 +199,41 @@ describe('ReceiveStockService (HU-06)', () => {
         // Stock was added only once: 10 + 5 = 15
         const balance = await balanceRepo.findByLocation(tenantId, warehouseId, productId, variantId);
         expect(balance!.getQuantityOnHand().getAmount().toNumber()).toBe(15);
+    });
+
+    it('debe rechazar la segunda llamada concurrente con IdempotencyConflictException y no duplicar el movimiento', async () => {
+        const cmd = {
+            tenantId,
+            warehouseId,
+            referenceDocument: 'COM-CONCURRENT',
+            lines: [{ productId, variantId, quantity: 3, unitCost: 1000 }],
+            idempotencyKey: 'rec-concurrent-key',
+        };
+
+        const initialExecuteCount = uow.executeCount;
+
+        // Simulamos dos peticiones concurrentes
+        const [result1, result2] = await Promise.allSettled([
+            receiveService.execute(cmd),
+            receiveService.execute(cmd),
+        ]);
+
+        const fulfilled = [result1, result2].filter((r) => r.status === 'fulfilled');
+        const rejected = [result1, result2].filter((r) => r.status === 'rejected');
+
+        expect(fulfilled.length).toBe(1);
+        expect(rejected.length).toBe(1);
+
+        if (rejected[0].status === 'rejected') {
+            expect(rejected[0].reason).toBeInstanceOf(IdempotencyConflictException);
+            expect(rejected[0].reason.code).toBe('IDEMPOTENCY_CONFLICT');
+        }
+
+        // El UnitOfWork solo debió ejecutarse exactamente UNA vez
+        expect(uow.executeCount).toBe(initialExecuteCount + 1);
+
+        // El stock solo debió incrementarse por la petición ganadora (+3): 10 + 3 = 13
+        const balance = await balanceRepo.findByLocation(tenantId, warehouseId, productId, variantId);
+        expect(balance!.getQuantityOnHand().getAmount().toNumber()).toBe(13);
     });
 });

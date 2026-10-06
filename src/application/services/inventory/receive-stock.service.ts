@@ -49,21 +49,14 @@ export class ReceiveStockService implements ReceiveStockUseCase {
 
     async execute(command: ReceiveStockCommand): Promise<ReceiveStockResult> {
         if (command.idempotencyKey) {
-            const cached = await this.idempotencyPort.get<ReceiveStockResult>(
-                command.tenantId,
-                command.idempotencyKey,
-            );
+            const lock = await this.idempotencyPort.acquire<ReceiveStockResult>({
+                tenantId: command.tenantId,
+                key: command.idempotencyKey,
+                operation: 'RECEIVE_STOCK',
+            });
 
-            if (cached) {
-                if (cached.status === IdempotencyStatus.COMPLETED && cached.response) {
-                    return cached.response;
-                }
-                if (cached.status === IdempotencyStatus.STARTED) {
-                    throw new IdempotencyConflictException(
-                        command.idempotencyKey,
-                        'RECEIVE_STOCK',
-                    );
-                }
+            if (lock.completed && lock.response) {
+                return lock.response;
             }
         }
 
@@ -137,8 +130,9 @@ export class ReceiveStockService implements ReceiveStockUseCase {
         const lineResults: ReceiveStockLineResult[] = [];
         let totalCostAccumulator = new Decimal(0);
 
-        const result = await this.unitOfWork.execute(async (tx) => {
-            let lineNumber = 1;
+        try {
+            const result = await this.unitOfWork.execute(async (tx) => {
+                let lineNumber = 1;
 
             for (const line of resolvedLines) {
                 let balance = await tx.inventoryBalanceRepository.findForUpdate(
@@ -149,7 +143,7 @@ export class ReceiveStockService implements ReceiveStockUseCase {
                 );
 
                 if (!balance) {
-                    const uom = await this.unitOfMeasureRepository.findById(
+                    const uom = await tx.unitOfMeasureRepository.findById(
                         command.tenantId,
                         line.unitOfMeasureId,
                     );
@@ -309,6 +303,16 @@ export class ReceiveStockService implements ReceiveStockUseCase {
                 createdAt: movement.getCreatedAt(),
             };
 
+            if (command.idempotencyKey && tx.idempotencyRepository) {
+                await tx.idempotencyRepository.save({
+                    tenantId: command.tenantId,
+                    key: command.idempotencyKey,
+                    operation: 'RECEIVE_STOCK',
+                    response: receiveResult,
+                    resourceId: movementId,
+                });
+            }
+
             return receiveResult;
         });
 
@@ -323,5 +327,11 @@ export class ReceiveStockService implements ReceiveStockUseCase {
         }
 
         return result;
+    } catch (error) {
+        if (command.idempotencyKey && !(error instanceof IdempotencyConflictException)) {
+            await this.idempotencyPort.release(command.tenantId, command.idempotencyKey).catch(() => {});
+        }
+        throw error;
     }
+}
 }

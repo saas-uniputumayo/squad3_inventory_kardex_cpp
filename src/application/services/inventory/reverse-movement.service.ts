@@ -34,21 +34,14 @@ export class ReverseMovementService implements ReverseMovementUseCase {
 
     async execute(command: ReverseMovementCommand): Promise<ReverseMovementResult> {
         if (command.idempotencyKey) {
-            const cached = await this.idempotencyPort.get<ReverseMovementResult>(
-                command.tenantId,
-                command.idempotencyKey,
-            );
+            const lock = await this.idempotencyPort.acquire<ReverseMovementResult>({
+                tenantId: command.tenantId,
+                key: command.idempotencyKey,
+                operation: 'REVERSE_MOVEMENT',
+            });
 
-            if (cached) {
-                if (cached.status === IdempotencyStatus.COMPLETED && cached.response) {
-                    return cached.response;
-                }
-                if (cached.status === IdempotencyStatus.STARTED) {
-                    throw new IdempotencyConflictException(
-                        command.idempotencyKey,
-                        'REVERSE_MOVEMENT',
-                    );
-                }
+            if (lock.completed && lock.response) {
+                return lock.response;
             }
         }
 
@@ -57,7 +50,8 @@ export class ReverseMovementService implements ReverseMovementUseCase {
         const ledgerEntries: InventoryLedgerEntry[] = [];
         const lineResults: ReversalLineResult[] = [];
 
-        const result = await this.unitOfWork.execute(async (tx) => {
+        try {
+            const result = await this.unitOfWork.execute(async (tx) => {
             const originalMovement = await tx.inventoryMovementRepository.findById(
                 command.tenantId,
                 command.movementId,
@@ -208,6 +202,16 @@ export class ReverseMovementService implements ReverseMovementUseCase {
                 createdAt: reversalMovement.getCreatedAt(),
             };
 
+            if (command.idempotencyKey && tx.idempotencyRepository) {
+                await tx.idempotencyRepository.save({
+                    tenantId: command.tenantId,
+                    key: command.idempotencyKey,
+                    operation: 'REVERSE_MOVEMENT',
+                    response: reversalResult,
+                    resourceId: reversalMovementId,
+                });
+            }
+
             return reversalResult;
         });
 
@@ -222,5 +226,11 @@ export class ReverseMovementService implements ReverseMovementUseCase {
         }
 
         return result;
+    } catch (error) {
+        if (command.idempotencyKey && !(error instanceof IdempotencyConflictException)) {
+            await this.idempotencyPort.release(command.tenantId, command.idempotencyKey).catch(() => {});
+        }
+        throw error;
     }
+}
 }

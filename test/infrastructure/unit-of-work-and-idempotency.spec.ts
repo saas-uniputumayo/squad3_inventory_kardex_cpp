@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+import { IdempotencyConflictException } from '../../src/application/exceptions/idempotency-conflict.exception';
 import { IdempotencyStatus } from '../../src/application/ports/out/idempotency.port';
 import { TenantContext } from '../../src/infrastructure/context/tenant-context';
 import { PrismaIdempotencyAdapter } from '../../src/infrastructure/persistence/prisma/idempotency/prisma-idempotency.adapter';
@@ -179,6 +181,166 @@ describe('PrismaUnitOfWork & PrismaIdempotencyAdapter Tests', () => {
                     tenantId,
                     key: 'key-error-retry',
                 },
+            });
+        });
+
+        describe('acquire (Atomic Concurrency Control)', () => {
+            it('should successfully acquire key when it does not exist', async () => {
+                const mockPrisma = {
+                    inventoryIdempotencyKey: {
+                        findFirst: jest.fn().mockResolvedValue(null),
+                        create: jest.fn().mockResolvedValue({ id: 'new-key-id' }),
+                    },
+                };
+
+                const adapter = new PrismaIdempotencyAdapter(mockPrisma as any);
+                const result = await adapter.acquire({
+                    tenantId,
+                    key: 'key-first-time',
+                    operation: 'RECEIVE_STOCK',
+                });
+
+                expect(result.acquired).toBe(true);
+                expect(result.completed).toBe(false);
+                expect(mockPrisma.inventoryIdempotencyKey.create).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        data: expect.objectContaining({
+                            tenantId,
+                            key: 'key-first-time',
+                            operation: 'RECEIVE_STOCK',
+                        }),
+                    }),
+                );
+            });
+
+            it('should return stored response if key is already COMPLETED', async () => {
+                const mockCompletedRecord = {
+                    id: 'completed-id',
+                    tenantId,
+                    key: 'key-already-done',
+                    operation: 'RECEIVE_STOCK',
+                    responseBody: { movementId: 'mov-done-123' },
+                    createdAt: new Date(),
+                    expiresAt: null,
+                };
+
+                const mockPrisma = {
+                    inventoryIdempotencyKey: {
+                        findFirst: jest.fn().mockResolvedValue(mockCompletedRecord),
+                    },
+                };
+
+                const adapter = new PrismaIdempotencyAdapter(mockPrisma as any);
+                const result = await adapter.acquire<{ movementId: string }>({
+                    tenantId,
+                    key: 'key-already-done',
+                    operation: 'RECEIVE_STOCK',
+                });
+
+                expect(result.acquired).toBe(false);
+                expect(result.completed).toBe(true);
+                expect(result.response).toEqual({ movementId: 'mov-done-123' });
+            });
+
+            it('should throw IdempotencyConflictException when key is STARTED and within timeout', async () => {
+                const mockStartedRecord = {
+                    id: 'in-flight-id',
+                    tenantId,
+                    key: 'key-in-flight',
+                    operation: 'DISPATCH_STOCK',
+                    responseBody: null,
+                    createdAt: new Date(Date.now() - 5000), // 5 seconds ago (< 60s timeout)
+                    expiresAt: null,
+                };
+
+                const mockPrisma = {
+                    inventoryIdempotencyKey: {
+                        findFirst: jest.fn().mockResolvedValue(mockStartedRecord),
+                    },
+                };
+
+                const adapter = new PrismaIdempotencyAdapter(mockPrisma as any);
+
+                await expect(
+                    adapter.acquire({
+                        tenantId,
+                        key: 'key-in-flight',
+                        operation: 'DISPATCH_STOCK',
+                    }),
+                ).rejects.toThrow(IdempotencyConflictException);
+            });
+
+            it('should reclaim orphan key if STARTED state exceeded lock timeout (>60s)', async () => {
+                const mockOrphanRecord = {
+                    id: 'orphan-id',
+                    tenantId,
+                    key: 'key-crashed-process',
+                    operation: 'RECEIVE_STOCK',
+                    responseBody: null,
+                    createdAt: new Date(Date.now() - 70000), // 70 seconds ago (> 60s timeout)
+                    expiresAt: null,
+                };
+
+                const mockPrisma = {
+                    inventoryIdempotencyKey: {
+                        findFirst: jest.fn().mockResolvedValue(mockOrphanRecord),
+                        update: jest.fn().mockResolvedValue({ id: 'orphan-id' }),
+                    },
+                };
+
+                const adapter = new PrismaIdempotencyAdapter(mockPrisma as any);
+                const result = await adapter.acquire({
+                    tenantId,
+                    key: 'key-crashed-process',
+                    operation: 'RECEIVE_STOCK',
+                });
+
+                expect(result.acquired).toBe(true);
+                expect(result.completed).toBe(false);
+                expect(mockPrisma.inventoryIdempotencyKey.update).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        where: { id: 'orphan-id' },
+                    }),
+                );
+            });
+
+            it('should handle unique constraint collision (P2002) when two requests race to insert', async () => {
+                const p2002Error = new Prisma.PrismaClientKnownRequestError(
+                    'Unique constraint failed on the fields: (`tenant_id`,`key`)',
+                    {
+                        code: 'P2002',
+                        clientVersion: '6.0.0',
+                    },
+                );
+
+                const mockWinnerRecord = {
+                    id: 'winner-id',
+                    tenantId,
+                    key: 'key-racing',
+                    operation: 'TRANSFER_STOCK',
+                    responseBody: null, // Still in flight by the winner
+                    createdAt: new Date(),
+                };
+
+                const mockPrisma = {
+                    inventoryIdempotencyKey: {
+                        findFirst: jest
+                            .fn()
+                            .mockResolvedValueOnce(null) // Request doesn't see it initially
+                            .mockResolvedValueOnce(mockWinnerRecord), // After P2002, finds the winner's record
+                        create: jest.fn().mockRejectedValue(p2002Error), // Collides with winner in PostgreSQL
+                    },
+                };
+
+                const adapter = new PrismaIdempotencyAdapter(mockPrisma as any);
+
+                await expect(
+                    adapter.acquire({
+                        tenantId,
+                        key: 'key-racing',
+                        operation: 'TRANSFER_STOCK',
+                    }),
+                ).rejects.toThrow(IdempotencyConflictException);
             });
         });
     });

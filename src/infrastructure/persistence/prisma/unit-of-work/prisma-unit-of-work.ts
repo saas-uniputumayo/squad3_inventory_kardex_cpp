@@ -7,6 +7,7 @@ import {
 } from '../../../../application/ports/out/unit-of-work.port';
 import { TenantContext } from '../../../context/tenant-context';
 import { PrismaService } from '../prisma.service';
+import { PrismaIdempotencyAdapter } from '../idempotency/prisma-idempotency.adapter';
 import {
     PrismaInventoryBalanceRepository,
     PrismaInventoryLedgerRepository,
@@ -35,17 +36,10 @@ export class PrismaUnitOfWork implements UnitOfWorkPort {
             async (tx) => {
                 const tenantId = TenantContext.getTenantId();
                 if (tenantId) {
-                    try {
-                        await (tx as any).$executeRawUnsafe(
-                            `SELECT set_current_tenant($1::uuid)`,
-                            tenantId,
-                        );
-                    } catch {
-                        // Respaldo directo en caso de que la función no esté cargada
-                        await (tx as any).$executeRawUnsafe(
-                            `SET LOCAL app.current_tenant_id = '${tenantId}'`,
-                        );
-                    }
+                    await (tx as any).$executeRawUnsafe(
+                        `SELECT set_current_tenant($1::uuid)`,
+                        tenantId,
+                    );
                 }
 
                 const context: TransactionalContext = {
@@ -58,6 +52,7 @@ export class PrismaUnitOfWork implements UnitOfWorkPort {
                     inventoryLedgerRepository: new PrismaInventoryLedgerRepository(tx),
                     inventoryTransferRepository: new PrismaInventoryTransferRepository(tx),
                     stockCountRepository: new PrismaStockCountRepository(tx),
+                    idempotencyRepository: new PrismaIdempotencyAdapter(tx),
                 };
 
                 return await work(context);

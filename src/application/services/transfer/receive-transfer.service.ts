@@ -40,25 +40,19 @@ export class ReceiveTransferService implements ReceiveTransferUseCase {
 
     async execute(command: ReceiveTransferCommand): Promise<ReceiveTransferResult> {
         if (command.idempotencyKey) {
-            const cached = await this.idempotencyPort.get<ReceiveTransferResult>(
-                command.tenantId,
-                command.idempotencyKey,
-            );
+            const lock = await this.idempotencyPort.acquire<ReceiveTransferResult>({
+                tenantId: command.tenantId,
+                key: command.idempotencyKey,
+                operation: 'RECEIVE_TRANSFER',
+            });
 
-            if (cached) {
-                if (cached.status === IdempotencyStatus.COMPLETED && cached.response) {
-                    return cached.response;
-                }
-                if (cached.status === IdempotencyStatus.STARTED) {
-                    throw new IdempotencyConflictException(
-                        command.idempotencyKey,
-                        'RECEIVE_TRANSFER',
-                    );
-                }
+            if (lock.completed && lock.response) {
+                return lock.response;
             }
         }
 
-        const result = await this.unitOfWork.execute(async (tx) => {
+        try {
+            const result = await this.unitOfWork.execute(async (tx) => {
             const transfer = await tx.inventoryTransferRepository.findById(
                 command.tenantId,
                 command.transferId,
@@ -74,7 +68,7 @@ export class ReceiveTransferService implements ReceiveTransferUseCase {
                 );
             }
 
-            const destWh = await this.warehouseRepository.findById(
+            const destWh = await tx.warehouseRepository.findById(
                 command.tenantId,
                 transfer.getDestinationWarehouseId(),
             );
@@ -224,6 +218,16 @@ export class ReceiveTransferService implements ReceiveTransferUseCase {
                 completedAt: transfer.getCompletedAt() ?? new Date(),
             };
 
+            if (command.idempotencyKey && tx.idempotencyRepository) {
+                await tx.idempotencyRepository.save({
+                    tenantId: command.tenantId,
+                    key: command.idempotencyKey,
+                    operation: 'RECEIVE_TRANSFER',
+                    response: receiveResult,
+                    resourceId: transfer.getId(),
+                });
+            }
+
             return receiveResult;
         });
 
@@ -233,9 +237,16 @@ export class ReceiveTransferService implements ReceiveTransferUseCase {
                 key: command.idempotencyKey,
                 operation: 'RECEIVE_TRANSFER',
                 response: result,
+                resourceId: result.transferId,
             });
         }
 
         return result;
+    } catch (error) {
+        if (command.idempotencyKey && !(error instanceof IdempotencyConflictException)) {
+            await this.idempotencyPort.release(command.tenantId, command.idempotencyKey).catch(() => {});
+        }
+        throw error;
     }
+}
 }

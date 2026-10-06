@@ -46,21 +46,14 @@ export class TransferStockService implements TransferStockUseCase {
 
     async execute(command: TransferStockCommand): Promise<TransferStockResult> {
         if (command.idempotencyKey) {
-            const cached = await this.idempotencyPort.get<TransferStockResult>(
-                command.tenantId,
-                command.idempotencyKey,
-            );
+            const lock = await this.idempotencyPort.acquire<TransferStockResult>({
+                tenantId: command.tenantId,
+                key: command.idempotencyKey,
+                operation: 'TRANSFER_STOCK',
+            });
 
-            if (cached) {
-                if (cached.status === IdempotencyStatus.COMPLETED && cached.response) {
-                    return cached.response;
-                }
-                if (cached.status === IdempotencyStatus.STARTED) {
-                    throw new IdempotencyConflictException(
-                        command.idempotencyKey,
-                        'TRANSFER_STOCK',
-                    );
-                }
+            if (lock.completed && lock.response) {
+                return lock.response;
             }
         }
 
@@ -160,8 +153,9 @@ export class TransferStockService implements TransferStockUseCase {
 
         const isTwoPhase = command.isTwoPhase === true;
 
-        const result = await this.unitOfWork.execute(async (tx) => {
-            let lineNumber = 1;
+        try {
+            const result = await this.unitOfWork.execute(async (tx) => {
+                let lineNumber = 1;
 
             for (const line of resolvedLines) {
                 const sourceBalance = await tx.inventoryBalanceRepository.findForUpdate(
@@ -416,6 +410,16 @@ export class TransferStockService implements TransferStockUseCase {
                 createdAt: transfer.getCreatedAt(),
             };
 
+            if (command.idempotencyKey && tx.idempotencyRepository) {
+                await tx.idempotencyRepository.save({
+                    tenantId: command.tenantId,
+                    key: command.idempotencyKey,
+                    operation: 'TRANSFER_STOCK',
+                    response: transferResult,
+                    resourceId: transferId,
+                });
+            }
+
             return transferResult;
         });
 
@@ -430,5 +434,11 @@ export class TransferStockService implements TransferStockUseCase {
         }
 
         return result;
+    } catch (error) {
+        if (command.idempotencyKey && !(error instanceof IdempotencyConflictException)) {
+            await this.idempotencyPort.release(command.tenantId, command.idempotencyKey).catch(() => {});
+        }
+        throw error;
     }
+}
 }

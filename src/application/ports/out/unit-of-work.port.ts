@@ -1,3 +1,4 @@
+import { IdempotencyPort } from './idempotency.port';
 import { InventoryBalanceRepositoryPort } from './inventory-balance-repository.port';
 import { InventoryLedgerRepositoryPort } from './inventory-ledger-repository.port';
 import { InventoryMovementRepositoryPort } from './inventory-movement-repository.port';
@@ -18,6 +19,7 @@ export interface TransactionalContext {
     readonly inventoryLedgerRepository: InventoryLedgerRepositoryPort;
     readonly inventoryTransferRepository: InventoryTransferRepositoryPort;
     readonly stockCountRepository: StockCountRepositoryPort;
+    readonly idempotencyRepository?: IdempotencyPort;
 }
 
 export interface UnitOfWorkPort {

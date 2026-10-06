@@ -9,10 +9,14 @@ import { UnitOfMeasure } from '../../../src/domain/entities/unit-of-measure/enti
 import { Warehouse } from '../../../src/domain/entities/warehouse/entity';
 import { ReferenceType } from '../../../src/domain/types';
 import {
+    AcquireIdempotencyParams,
+    AcquireIdempotencyResult,
     IdempotencyPort,
     IdempotencyRecord,
+    IdempotencyStatus,
     SaveIdempotencyParams,
 } from '../../../src/application/ports/out/idempotency.port';
+import { IdempotencyConflictException } from '../../../src/application/exceptions/idempotency-conflict.exception';
 import {
     InventoryBalanceKey,
     InventoryBalanceRepositoryPort,
@@ -45,12 +49,51 @@ export class InMemoryIdempotencyPort implements IdempotencyPort {
         return (this.records.get(`${tenantId}:${key}`) as IdempotencyRecord<T>) ?? null;
     }
 
+    async acquire<T>(params: AcquireIdempotencyParams): Promise<AcquireIdempotencyResult<T>> {
+        const key = `${params.tenantId}:${params.key}`;
+        const existing = this.records.get(key);
+
+        if (existing) {
+            if (existing.status === IdempotencyStatus.COMPLETED && existing.response) {
+                return {
+                    acquired: false,
+                    completed: true,
+                    response: existing.response as T,
+                };
+            }
+            if (existing.status === IdempotencyStatus.STARTED) {
+                const ageSeconds = (Date.now() - existing.createdAt.getTime()) / 1000;
+                const timeout = params.ttlSeconds ?? 60;
+                if (ageSeconds < timeout) {
+                    throw new IdempotencyConflictException(
+                        params.key,
+                        params.operation,
+                        `Conflicto de idempotencia: la operación '${params.operation}' ya está en progreso para la clave '${params.key}'`,
+                    );
+                }
+            }
+        }
+
+        this.records.set(key, {
+            key: params.key,
+            tenantId: params.tenantId,
+            operation: params.operation,
+            status: IdempotencyStatus.STARTED,
+            createdAt: new Date(),
+        });
+
+        return {
+            acquired: true,
+            completed: false,
+        };
+    }
+
     async save<T>(params: SaveIdempotencyParams<T>): Promise<void> {
         this.records.set(`${params.tenantId}:${params.key}`, {
             key: params.key,
             tenantId: params.tenantId,
             operation: params.operation,
-            status: 'COMPLETED' as any,
+            status: IdempotencyStatus.COMPLETED,
             response: params.response,
             resourceId: params.resourceId,
             createdAt: new Date(),
