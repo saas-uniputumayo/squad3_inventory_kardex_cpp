@@ -7,10 +7,14 @@
     "dev": "nest start --watch",
     "start": "nest start",
     "test": "jest",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:e2e": "jest --testPathPattern=test/e2e --runInBand",
     "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",
     "prisma:validate": "prisma validate --schema=./prisma/schema.prisma",
-    "prisma:format": "prisma format --schema=./prisma/schema.prisma"
+    "prisma:format": "prisma format --schema=./prisma/schema.prisma",
+    "db:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "node --no-warnings prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

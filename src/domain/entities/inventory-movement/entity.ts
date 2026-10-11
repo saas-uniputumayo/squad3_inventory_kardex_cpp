@@ -18,6 +18,7 @@ export interface CreateInventoryMovementProps {
     notes?: string;
     occurredAt?: Date;
     lines: InventoryMovementLine[];
+    reversesMovementId?: string;
 }
 
 export interface InventoryMovementProps {
@@ -34,6 +35,7 @@ export interface InventoryMovementProps {
     postedAt?: Date;
     reversedAt?: Date;
     reversalMovementId?: string;
+    reversesMovementId?: string;
 }
 
 export class InventoryMovement {
@@ -54,6 +56,7 @@ export class InventoryMovement {
         private reversedAt: Date | undefined,
         private reversalMovementId: string | undefined,
         lines: InventoryMovementLine[] = [],
+        private reversesMovementId: string | undefined = undefined,
     ) {
         this.lines = [...lines];
     }
@@ -101,6 +104,7 @@ export class InventoryMovement {
             undefined,
             undefined,
             props.lines,
+            props.reversesMovementId,
         );
 
         movement.validateLines();
@@ -188,6 +192,7 @@ export class InventoryMovement {
             props.reversedAt,
             reversalMovementId,
             lines,
+            props.reversesMovementId,
         );
 
         movement.validateLines();
@@ -337,6 +342,10 @@ export class InventoryMovement {
 
     getReversalMovementId(): string | undefined {
         return this.reversalMovementId;
+    }
+
+    getReversesMovementId(): string | undefined {
+        return this.reversesMovementId;
     }
 
     getLines(): readonly InventoryMovementLine[] {

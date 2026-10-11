@@ -3,6 +3,8 @@ node_modules/
 dist/
 package-lock.json
 
+squad1_core_architecture_rls_rbac
 squad1_core_architecture_rls_rbac/
+squad1_core_architecture_rls_rbac/*
 .js
 .vscode/

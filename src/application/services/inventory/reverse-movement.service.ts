@@ -187,6 +187,7 @@ export class ReverseMovementService implements ReverseMovementUseCase {
                 reference: referenceVO,
                 notes: `Reversa del movimiento ${originalMovement.getId()}. Razón: ${command.reason}`,
                 lines: reversalLines,
+                reversesMovementId: originalMovement.getId(),
             });
 
             await tx.inventoryMovementRepository.save(originalMovement);

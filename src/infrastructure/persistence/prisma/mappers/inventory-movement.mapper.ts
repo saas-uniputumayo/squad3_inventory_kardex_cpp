@@ -25,6 +25,7 @@ export type RawMovementWithLines = PrismaInventoryMovement & {
             decimalPlaces: number;
         };
     })[];
+    reversalOf?: PrismaInventoryMovement | null;
 };
 
 export class InventoryMovementMapper {
@@ -46,7 +47,8 @@ export class InventoryMovementMapper {
             createdAt: raw.createdAt,
             postedAt: raw.postedAt ?? undefined,
             reversedAt: raw.reversedAt ?? undefined,
-            reversalMovementId: raw.reversesMovementId ?? undefined,
+            reversalMovementId: raw.reversalOf?.id ?? undefined,
+            reversesMovementId: raw.reversesMovementId ?? undefined,
         };
 
         const domainLines = (raw.lines ?? []).map((rawLine, index) => {
@@ -97,7 +99,7 @@ export class InventoryMovementMapper {
             referenceId: refId && refId.length === 36 ? refId : null,
             referenceDocument: entity.getReference().toString(),
             reason: entity.getNotes() ?? null,
-            reversesMovementId: entity.getReversalMovementId() ?? null,
+            reversesMovementId: entity.getReversesMovementId() ?? null,
             createdAt: entity.getCreatedAt(),
             updatedAt: entity.getCreatedAt(),
             postedAt: entity.getPostedAt() ?? null,

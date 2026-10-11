@@ -76,6 +76,7 @@ export class PrismaInventoryMovementRepository implements InventoryMovementRepos
                     },
                     orderBy: { lineNumber: 'asc' },
                 },
+                reversalOf: true,
             },
         });
 
