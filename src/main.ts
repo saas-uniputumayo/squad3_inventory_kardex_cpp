@@ -47,16 +47,35 @@ async function bootstrap() {
 
     // Swagger OpenAPI Documentation
     const config = new DocumentBuilder()
-        .setTitle('SaaS Contable - Inventory Engine (Squad 3)')
+        .setTitle('SaaS Contable UniPutumayo — Motor de Inventarios y Kardex CPP (Squad 3)')
         .setDescription(
-            'Multi-Tenant Inventory Engine, Multi-Warehouse, Kardex CPP & Stock Control API',
+            'API RESTful de Inventarios Multi-Tenant con PostgreSQL RLS, Control Multi-Bodega, Valuación Kardex CPP, Transferencias en Dos Fases, Tomas Físicas y Validación de Sesiones en Redis.',
         )
-        .setVersion('1.0')
-        .addBearerAuth()
+        .setVersion('1.0.0')
+        .addBearerAuth(
+            {
+                type: 'http',
+                scheme: 'bearer',
+                bearerFormat: 'JWT',
+                description: 'Token JWT emitido por Core (claims: sub, tenantId, role, jti)',
+            },
+            'bearer',
+        )
+        .addTag('Inventory - Products', 'Catálogo de productos, variantes, precios y unidades de medida')
+        .addTag('Inventory - Warehouses', 'Consulta y filtrado de bodegas asignadas al tenant')
+        .addTag('Inventory - Movements', 'Recepciones de compra, despachos y reversiones con recálculo de Costo Promedio Ponderado (CPP)')
+        .addTag('Inventory - Transfers', 'Traslados multi-bodega directos o en dos fases (en tránsito y recepción)')
+        .addTag('Inventory - Stock Counts', 'Sesiones de toma física de inventario y aplicación de ajustes por faltante/sobrante')
+        .addTag('Inventory - Kardex', 'Libro mayor de inventarios oficial con trazabilidad de movimientos y saldos acumulados')
+        .addTag('Inventory - Stock Alerts', 'Monitoreo de productos con stock por debajo del umbral mínimo de seguridad')
         .build();
 
     const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api/docs', app, document);
+    SwaggerModule.setup('api/docs', app, document, {
+        swaggerOptions: {
+            persistAuthorization: true,
+        },
+    });
 
     const port = process.env.PORT ?? 3001;
     await app.listen(port);

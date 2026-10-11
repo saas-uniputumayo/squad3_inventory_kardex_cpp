@@ -8,6 +8,8 @@
     "start": "nest start",
     "test": "jest",
     "test:e2e": "jest --testPathPattern=test/e2e --runInBand",
+    "test:swagger": "jest test/presentation/swagger-coverage.spec.ts",
+    "openapi:export": "npx ts-node scripts/export-openapi.ts",
     "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",
     "prisma:validate": "prisma validate --schema=./prisma/schema.prisma",
     "prisma:format": "prisma format --schema=./prisma/schema.prisma",
