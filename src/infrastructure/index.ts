@@ -15,3 +15,4 @@ export * from './persistence/prisma/mappers/inventory-transfer.mapper';
 export * from './persistence/prisma/mappers/stock-count.mapper';
 export * from './persistence/prisma/unit-of-work/prisma-unit-of-work';
 export * from './persistence/prisma/idempotency/prisma-idempotency.adapter';
+export * from './adapters/redis/redis-session-validator.adapter';

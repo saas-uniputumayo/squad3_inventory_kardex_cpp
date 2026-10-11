@@ -27,7 +27,9 @@ import {
     UNIT_OF_MEASURE_REPOSITORY_PORT,
     UNIT_OF_WORK_PORT,
     WAREHOUSE_REPOSITORY_PORT,
+    SESSION_VALIDATOR_PORT,
 } from './tokens';
+import { RedisSessionValidatorAdapter } from './adapters/redis/redis-session-validator.adapter';
 
 @Module({
     imports: [PrismaModule],
@@ -88,6 +90,11 @@ import {
             provide: IDEMPOTENCY_PORT,
             useClass: PrismaIdempotencyAdapter,
         },
+        RedisSessionValidatorAdapter,
+        {
+            provide: SESSION_VALIDATOR_PORT,
+            useClass: RedisSessionValidatorAdapter,
+        },
     ],
     exports: [
         PrismaModule,
@@ -114,6 +121,8 @@ import {
         UNIT_OF_WORK_PORT,
         PrismaIdempotencyAdapter,
         IDEMPOTENCY_PORT,
+        RedisSessionValidatorAdapter,
+        SESSION_VALIDATOR_PORT,
     ],
 })
 export class InfrastructureModule {}

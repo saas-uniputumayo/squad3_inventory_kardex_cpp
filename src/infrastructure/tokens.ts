@@ -9,3 +9,4 @@ export const INVENTORY_TRANSFER_REPOSITORY_PORT = Symbol('InventoryTransferRepos
 export const STOCK_COUNT_REPOSITORY_PORT = Symbol('StockCountRepositoryPort');
 export const UNIT_OF_WORK_PORT = Symbol('UnitOfWorkPort');
 export const IDEMPOTENCY_PORT = Symbol('IdempotencyPort');
+export { SESSION_VALIDATOR_PORT, SESSION_CACHE_PORT } from '@saas/contracts';
