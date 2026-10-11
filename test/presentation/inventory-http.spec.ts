@@ -44,6 +44,7 @@ describe('Inventory Presentation HTTP Integration Tests', () => {
     let validCashierToken: string;
     let revokedSessionToken: string;
     let expiredToken: string;
+    let tokenWithoutJti: string;
 
     const mockSessionValidator: SessionValidator = {
         isSessionActive: jest.fn().mockImplementation((_userId: string, sessionId: string) => {
@@ -100,6 +101,12 @@ describe('Inventory Presentation HTTP Integration Tests', () => {
             },
             { expiresIn: '-1s' },
         );
+
+        tokenWithoutJti = jwtService.sign({
+            sub: '11111111-1111-4111-8111-111111111111',
+            tenantId: '22222222-2222-4222-8222-222222222222',
+            role: UserRole.ADMIN,
+        });
 
         const mockConfigService = {
             get: jest.fn().mockImplementation((key: string) => {
@@ -195,6 +202,16 @@ describe('Inventory Presentation HTTP Integration Tests', () => {
             expect(response.status).toBe(401);
             expect(response.body).toHaveProperty('statusCode', 401);
             expect(response.body.message).toContain('Sesión expirada o invalidada');
+        });
+
+        it('returns 401 Unauthorized when JWT token lacks mandatory jti claim (CRÍTICO 6)', async () => {
+            const response = await request(app.getHttpServer())
+                .get('/api/v1/inventory/warehouses')
+                .set('Authorization', `Bearer ${tokenWithoutJti}`);
+
+            expect(response.status).toBe(401);
+            expect(response.body).toHaveProperty('statusCode', 401);
+            expect(response.body.message).toContain('claims sub, tenantId, role y jti son obligatorios');
         });
 
         it('returns 403 Forbidden when CASHIER attempts ReceiveStock (requires OWNER/ADMIN/WAREHOUSE_MANAGER)', async () => {

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 
 import { PrismaIdempotencyAdapter } from './persistence/prisma/idempotency/prisma-idempotency.adapter';
 import { PrismaModule } from './persistence/prisma/prisma.module';
@@ -28,9 +28,11 @@ import {
     UNIT_OF_WORK_PORT,
     WAREHOUSE_REPOSITORY_PORT,
     SESSION_VALIDATOR_PORT,
+    SESSION_CACHE_PORT,
 } from './tokens';
 import { RedisSessionValidatorAdapter } from './adapters/redis/redis-session-validator.adapter';
 
+@Global()
 @Module({
     imports: [PrismaModule],
     providers: [
@@ -93,7 +95,11 @@ import { RedisSessionValidatorAdapter } from './adapters/redis/redis-session-val
         RedisSessionValidatorAdapter,
         {
             provide: SESSION_VALIDATOR_PORT,
-            useClass: RedisSessionValidatorAdapter,
+            useExisting: RedisSessionValidatorAdapter,
+        },
+        {
+            provide: SESSION_CACHE_PORT,
+            useExisting: RedisSessionValidatorAdapter,
         },
     ],
     exports: [
@@ -123,6 +129,7 @@ import { RedisSessionValidatorAdapter } from './adapters/redis/redis-session-val
         IDEMPOTENCY_PORT,
         RedisSessionValidatorAdapter,
         SESSION_VALIDATOR_PORT,
+        SESSION_CACHE_PORT,
     ],
 })
 export class InfrastructureModule {}

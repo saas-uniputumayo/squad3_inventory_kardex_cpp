@@ -6,8 +6,8 @@ import {
     UnauthorizedException,
 } from '@nestjs/common';
 import { from, Observable } from 'rxjs';
-import { TenantContext } from '../../infrastructure/context/tenant-context';
-import { AuthenticatedUser } from '../decorators/current-user.decorator';
+import { AuthenticatedUser } from '@saas/contracts';
+import { TenantContext } from '../../application/context/tenant-context';
 
 @Injectable()
 export class TenantInterceptor implements NestInterceptor {

@@ -15,6 +15,7 @@ describe('Presentation Layer - Controllers Unit Tests', () => {
         sub: 'actor-uuid-1111',
         tenantId: 'tenant-uuid-2222',
         role: UserRole.ADMIN,
+        jti: 'session-uuid-3333',
     };
 
     describe('ProductsController', () => {

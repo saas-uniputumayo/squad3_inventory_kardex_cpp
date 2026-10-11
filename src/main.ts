@@ -10,11 +10,11 @@ async function bootstrap() {
     const logger = new Logger('Bootstrap');
     const app = await NestFactory.create(AppModule);
 
-    // Fail-fast on startup in production if JWT_SECRET is not configured
+    // Fail-fast on startup if JWT_SECRET is not configured (CRÍTICO 5)
     const configService = app.get(ConfigService);
     const jwtSecret = configService.get<string>('JWT_SECRET');
-    if (!jwtSecret && process.env.NODE_ENV === 'production') {
-        logger.error('FATAL: Variable de entorno JWT_SECRET no configurada en entorno de producción');
+    if (!jwtSecret) {
+        logger.error('FATAL: Variable de entorno JWT_SECRET obligatoria no está configurada en el servidor');
         process.exit(1);
     }
 

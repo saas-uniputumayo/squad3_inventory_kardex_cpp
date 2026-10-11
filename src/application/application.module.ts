@@ -1,16 +1,29 @@
 import { Module } from '@nestjs/common';
-import { InfrastructureModule } from '../infrastructure/infrastructure.module';
 import {
+    APPLY_STOCK_COUNT_USE_CASE,
+    CREATE_PRODUCT_USE_CASE,
+    CREATE_STOCK_COUNT_USE_CASE,
+    DISPATCH_STOCK_USE_CASE,
+    GET_KARDEX_USE_CASE,
+    GET_PRODUCT_DETAIL_USE_CASE,
+    GET_STOCK_ALERTS_USE_CASE,
     IDEMPOTENCY_PORT,
     INVENTORY_BALANCE_REPOSITORY_PORT,
     INVENTORY_LEDGER_REPOSITORY_PORT,
+    LIST_WAREHOUSES_USE_CASE,
     PRODUCT_REPOSITORY_PORT,
     PRODUCT_VARIANT_REPOSITORY_PORT,
+    RECEIVE_STOCK_USE_CASE,
+    RECEIVE_TRANSFER_USE_CASE,
+    REVERSE_MOVEMENT_USE_CASE,
+    SEARCH_PRODUCTS_USE_CASE,
     STOCK_COUNT_REPOSITORY_PORT,
+    TRANSFER_STOCK_USE_CASE,
     UNIT_OF_MEASURE_REPOSITORY_PORT,
     UNIT_OF_WORK_PORT,
+    UPDATE_PRODUCT_USE_CASE,
     WAREHOUSE_REPOSITORY_PORT,
-} from '../infrastructure/tokens';
+} from './tokens';
 import {
     IdempotencyPort,
     InventoryBalanceRepositoryPort,
@@ -38,25 +51,9 @@ import {
     TransferStockService,
     UpdateProductService,
 } from './services';
-import {
-    APPLY_STOCK_COUNT_USE_CASE,
-    CREATE_PRODUCT_USE_CASE,
-    CREATE_STOCK_COUNT_USE_CASE,
-    DISPATCH_STOCK_USE_CASE,
-    GET_KARDEX_USE_CASE,
-    GET_PRODUCT_DETAIL_USE_CASE,
-    GET_STOCK_ALERTS_USE_CASE,
-    LIST_WAREHOUSES_USE_CASE,
-    RECEIVE_STOCK_USE_CASE,
-    RECEIVE_TRANSFER_USE_CASE,
-    REVERSE_MOVEMENT_USE_CASE,
-    SEARCH_PRODUCTS_USE_CASE,
-    TRANSFER_STOCK_USE_CASE,
-    UPDATE_PRODUCT_USE_CASE,
-} from './tokens';
 
 @Module({
-    imports: [InfrastructureModule],
+    imports: [], // Application does NOT import Infrastructure (Decoupled Pure Application Module)
     providers: [
         {
             provide: CREATE_PRODUCT_USE_CASE,

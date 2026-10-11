@@ -27,36 +27,31 @@ export class JwtAuthGuard implements CanActivate {
             throw new UnauthorizedException('Token de autenticación no provisto');
         }
 
+        const secret = this.configService.get<string>('JWT_SECRET');
+        if (!secret) {
+            throw new UnauthorizedException('Variable de entorno JWT_SECRET obligatoria no configurada en el servidor');
+        }
+
         try {
-            const secret = this.configService.get<string>('JWT_SECRET');
-
-            if (!secret && process.env.NODE_ENV === 'production') {
-                throw new UnauthorizedException('JWT_SECRET no configurado en producción');
-            }
-
-            const effectiveSecret =
-                secret ||
-                process.env.JWT_SECRET ||
-                'uniputumayo-saas-dev-secret-key-2026';
-
             const payload = await this.jwtService.verifyAsync<AuthenticatedUser>(token, {
-                secret: effectiveSecret,
+                secret,
             });
 
-            if (!payload.tenantId || !payload.sub) {
-                throw new UnauthorizedException('Payload de token inválido o incompleto');
+            // Validación estricta de claims obligatorios: sub, tenantId, role y jti (CRÍTICO 6)
+            if (!payload.tenantId || !payload.sub || !payload.role || !payload.jti) {
+                throw new UnauthorizedException(
+                    'Payload de token inválido o incompleto: claims sub, tenantId, role y jti son obligatorios',
+                );
             }
 
-            // Validación transversal de sesión activa (revocación jti en Redis)
-            if (payload.jti) {
-                const isSessionActive = await this.sessionValidator.isSessionActive(
-                    payload.sub,
-                    payload.jti,
-                );
+            // Validación transversal de sesión activa (revocación jti en Redis obligatoria)
+            const isSessionActive = await this.sessionValidator.isSessionActive(
+                payload.sub,
+                payload.jti,
+            );
 
-                if (!isSessionActive) {
-                    throw new UnauthorizedException('Sesión expirada o invalidada');
-                }
+            if (!isSessionActive) {
+                throw new UnauthorizedException('Sesión expirada o invalidada');
             }
 
             (request as any).user = payload;

@@ -4,7 +4,7 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { SessionValidator, UserRole } from '@saas/contracts';
 import { of } from 'rxjs';
-import { TenantContext } from '../../src/infrastructure/context/tenant-context';
+import { TenantContext } from '../../src/application/context/tenant-context';
 import { JwtAuthGuard } from '../../src/presentation/guards/jwt-auth.guard';
 import { RolesGuard } from '../../src/presentation/guards/roles.guard';
 import { TenantInterceptor } from '../../src/presentation/interceptors/tenant.interceptor';
@@ -104,10 +104,22 @@ describe('Guards and Interceptors', () => {
         });
 
         it('throws UnauthorizedException when payload lacks tenantId or sub', async () => {
-            jwtService.verifyAsync.mockResolvedValue({ role: UserRole.ADMIN } as any);
+            jwtService.verifyAsync.mockResolvedValue({ role: UserRole.ADMIN, jti: 'jti-123' } as any);
             const context = createContextWithHeader('Bearer valid-token');
 
             await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+        });
+
+        it('throws UnauthorizedException when payload lacks mandatory jti claim (CRÍTICO 6)', async () => {
+            jwtService.verifyAsync.mockResolvedValue({
+                sub: 'user-123',
+                tenantId: 'tenant-456',
+                role: UserRole.ADMIN,
+                // missing jti
+            } as any);
+            const context = createContextWithHeader('Bearer token-without-jti');
+
+            await expect(guard.canActivate(context)).rejects.toThrow('Payload de token inválido o incompleto');
         });
 
         it('throws UnauthorizedException when session has been invalidated in Redis (jti revoked)', async () => {
