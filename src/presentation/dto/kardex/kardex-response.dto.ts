@@ -45,22 +45,22 @@ export class KardexEntryResponseDto {
     @ApiPropertyOptional({ example: 'FAC-2026-001' })
     referenceDocument?: string;
 
-    @ApiProperty({ example: '10.0000', description: 'Quantity received' })
+    @ApiProperty({ example: '10.0000', description: 'Cantidad recibida (entrada física)' })
     quantityIn!: string;
 
-    @ApiProperty({ example: '0.0000', description: 'Quantity dispatched' })
+    @ApiProperty({ example: '0.0000', description: 'Cantidad despachada (salida física)' })
     quantityOut!: string;
 
-    @ApiProperty({ example: '10.0000', description: 'Cumulative balance of stock' })
+    @ApiProperty({ example: '10.0000', description: 'Saldo acumulado de existencias físicas' })
     quantityBalance!: string;
 
-    @ApiProperty({ example: '15000.00', description: 'Transaction unit cost' })
+    @ApiProperty({ example: '15000.00', description: 'Costo unitario de la transacción' })
     unitCost!: string;
 
-    @ApiProperty({ example: '15000.00', description: 'Weighted average unit cost (CPP)' })
+    @ApiProperty({ example: '15000.00', description: 'Costo promedio ponderado (CPP) unitario tras la operación' })
     averageCost!: string;
 
-    @ApiProperty({ example: '150000.00', description: 'Total inventory valuation at this point' })
+    @ApiProperty({ example: '150000.00', description: 'Valoración total del inventario valorizado a CPP' })
     inventoryValue!: string;
 }
 

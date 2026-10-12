@@ -64,13 +64,13 @@ export class StockCountsController {
 
     @Post()
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER)
-    @ApiOperation({ summary: 'Create physical inventory count audit session for a warehouse' })
+    @ApiOperation({ summary: 'Crear sesión de auditoría para toma física de inventario en una bodega' })
     @ApiBody({ type: CreateStockCountDto })
-    @ApiResponse({ status: 201, description: 'Stock count created', type: CreateStockCountResponseDto })
-    @ApiResponse({ status: 400, description: 'Warehouse invalid or active count session exists', type: ErrorResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Warehouse not found', type: ErrorResponseDto })
+    @ApiResponse({ status: 201, description: 'Sesión de toma física creada exitosamente', type: CreateStockCountResponseDto })
+    @ApiResponse({ status: 400, description: 'Bodega inválida o ya existe una sesión activa de conteo', type: ErrorResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Bodega no encontrada', type: ErrorResponseDto })
     async create(
         @Body() dto: CreateStockCountDto,
         @CurrentUser() user: AuthenticatedUser,
@@ -88,16 +88,16 @@ export class StockCountsController {
     @Post(':id/apply')
     @HttpCode(HttpStatus.OK)
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER)
-    @ApiOperation({ summary: 'Apply physical stock count adjustments generating surplus/shortage movements' })
-    @ApiParam({ name: 'id', description: 'Stock Count UUID' })
-    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Optional unique key to ensure idempotent execution' })
+    @ApiOperation({ summary: 'Aplicar ajustes de toma física generando movimientos de sobrante o faltante' })
+    @ApiParam({ name: 'id', description: 'Identificador UUID de la toma física' })
+    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Clave única opcional para garantizar ejecución idempotente' })
     @ApiBody({ type: ApplyStockCountDto })
-    @ApiResponse({ status: 200, description: 'Stock count applied and inventory balances updated', type: ApplyStockCountResponseDto })
-    @ApiResponse({ status: 400, description: 'Count not in IN_PROGRESS state or validation error', type: ErrorResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Stock count not found', type: ErrorResponseDto })
-    @ApiResponse({ status: 409, description: 'Idempotency conflict or concurrent modification', type: ErrorResponseDto })
+    @ApiResponse({ status: 200, description: 'Ajustes aplicados y balances de inventario actualizados', type: ApplyStockCountResponseDto })
+    @ApiResponse({ status: 400, description: 'El conteo no está en progreso o presenta errores de validación', type: ErrorResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Toma física no encontrada', type: ErrorResponseDto })
+    @ApiResponse({ status: 409, description: 'Conflicto de idempotencia o concurrencia', type: ErrorResponseDto })
     async apply(
         @Param('id', ParseUUIDPipe) id: string,
         @Body() dto: ApplyStockCountDto,

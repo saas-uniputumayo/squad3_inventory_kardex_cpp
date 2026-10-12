@@ -46,12 +46,12 @@ export class KardexController {
 
     @Get(':productId')
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.WAREHOUSE_MANAGER)
-    @ApiOperation({ summary: 'Get official Kardex ledger entries (CPP weighted average) for a product' })
-    @ApiParam({ name: 'productId', description: 'Product UUID' })
-    @ApiResponse({ status: 200, description: 'Paginated Kardex ledger ledger entries and product info', type: KardexResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Product not found', type: ErrorResponseDto })
+    @ApiOperation({ summary: 'Obtener libro mayor oficial de Kardex (valuación CPP) para un producto' })
+    @ApiParam({ name: 'productId', description: 'Identificador UUID del producto' })
+    @ApiResponse({ status: 200, description: 'Movimientos de Kardex paginados e información del producto', type: KardexResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Producto no encontrado', type: ErrorResponseDto })
     async getKardex(
         @Param('productId', ParseUUIDPipe) productId: string,
         @Query() query: GetKardexQueryDto,

@@ -8,12 +8,12 @@ export class CountLineDto {
     @IsNotEmpty()
     lineId!: string;
 
-    @ApiProperty({ example: '12.0000', description: 'Actual physical counted quantity' })
+    @ApiProperty({ example: '12.0000', description: 'Cantidad física real contada' })
     @IsString()
     @IsNotEmpty()
     countedQuantity!: string;
 
-    @ApiPropertyOptional({ example: 'Verified double count' })
+    @ApiPropertyOptional({ example: 'Conteo verificado en bodega' })
     @IsString()
     @IsOptional()
     notes?: string;
@@ -22,7 +22,7 @@ export class CountLineDto {
 export class ApplyStockCountDto {
     @ApiPropertyOptional({
         type: [CountLineDto],
-        description: 'Optional count line updates prior to applying and posting adjustments',
+        description: 'Actualizaciones opcionales de líneas de conteo antes de aplicar y asentar los ajustes',
     })
     @IsArray()
     @ValidateNested({ each: true })

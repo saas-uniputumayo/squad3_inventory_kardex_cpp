@@ -25,22 +25,22 @@ export class StockAlertItemResponseDto {
     @ApiProperty({ example: 'Bodega Principal' })
     warehouseName!: string;
 
-    @ApiProperty({ example: '5.0000', description: 'Current physical on-hand stock' })
+    @ApiProperty({ example: '5.0000', description: 'Stock físico actual en existencia' })
     currentStock!: string;
 
-    @ApiProperty({ example: '0.0000', description: 'Reserved stock for pending dispatches' })
+    @ApiProperty({ example: '0.0000', description: 'Stock reservado para despachos pendientes' })
     reservedStock!: string;
 
-    @ApiProperty({ example: '5.0000', description: 'Available stock' })
+    @ApiProperty({ example: '5.0000', description: 'Stock disponible para la venta' })
     availableStock!: string;
 
-    @ApiProperty({ example: '20.0000', description: 'Configured minimum stock safety threshold' })
+    @ApiProperty({ example: '20.0000', description: 'Umbral mínimo de seguridad de stock configurado' })
     minimumStock!: string;
 
-    @ApiProperty({ example: '15.0000', description: 'Quantity below minimum threshold' })
+    @ApiProperty({ example: '15.0000', description: 'Déficit o faltante por debajo del umbral mínimo' })
     shortage!: string;
 
-    @ApiProperty({ example: '2500.00', description: 'Configured sale price' })
+    @ApiProperty({ example: '2500.00', description: 'Precio de venta al público configurado' })
     salePrice!: string;
 }
 

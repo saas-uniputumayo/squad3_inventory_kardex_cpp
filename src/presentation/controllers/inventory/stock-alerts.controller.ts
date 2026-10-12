@@ -43,10 +43,10 @@ export class StockAlertsController {
 
     @Get()
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.WAREHOUSE_MANAGER)
-    @ApiOperation({ summary: 'Get products below their configured minimum stock threshold' })
-    @ApiResponse({ status: 200, description: 'List of low stock alert items', type: StockAlertsResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
+    @ApiOperation({ summary: 'Obtener productos por debajo de su umbral mínimo de existencias configurado' })
+    @ApiResponse({ status: 200, description: 'Lista de alertas de stock mínimo', type: StockAlertsResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
     async getAlerts(
         @Query() query: GetStockAlertsQueryDto,
         @CurrentUser() user: AuthenticatedUser,

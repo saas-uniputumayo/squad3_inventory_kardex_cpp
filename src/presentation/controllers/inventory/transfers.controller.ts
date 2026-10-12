@@ -63,15 +63,15 @@ export class TransfersController {
 
     @Post()
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER)
-    @ApiOperation({ summary: 'Initiate a multi-warehouse transfer (direct or two-phase in-transit)' })
-    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Optional unique key to ensure idempotent execution' })
+    @ApiOperation({ summary: 'Iniciar un traslado entre bodegas (directo o en dos fases en tránsito)' })
+    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Clave única opcional para garantizar ejecución idempotente' })
     @ApiBody({ type: TransferStockDto })
-    @ApiResponse({ status: 201, description: 'Transfer initiated or completed', type: TransferStockResponseDto })
-    @ApiResponse({ status: 400, description: 'Insufficient source stock or same warehouse error', type: ErrorResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Warehouse or product not found', type: ErrorResponseDto })
-    @ApiResponse({ status: 409, description: 'Idempotency conflict or concurrent modification', type: ErrorResponseDto })
+    @ApiResponse({ status: 201, description: 'Traslado iniciado o completado exitosamente', type: TransferStockResponseDto })
+    @ApiResponse({ status: 400, description: 'Stock insuficiente en bodega origen o traslado entre la misma bodega', type: ErrorResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Bodega o producto no encontrado', type: ErrorResponseDto })
+    @ApiResponse({ status: 409, description: 'Conflicto de idempotencia o concurrencia', type: ErrorResponseDto })
     async transfer(
         @Body() dto: TransferStockDto,
         @CurrentUser() user: AuthenticatedUser,
@@ -98,15 +98,15 @@ export class TransfersController {
     @Post(':id/receive')
     @HttpCode(HttpStatus.OK)
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER)
-    @ApiOperation({ summary: 'Confirm receipt of an in-transit transfer at destination warehouse' })
-    @ApiParam({ name: 'id', description: 'Transfer UUID' })
-    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Optional unique key to ensure idempotent execution' })
-    @ApiResponse({ status: 200, description: 'Transfer received and finalized', type: ReceiveTransferResponseDto })
-    @ApiResponse({ status: 400, description: 'Transfer is not in transit', type: ErrorResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Transfer not found', type: ErrorResponseDto })
-    @ApiResponse({ status: 409, description: 'Idempotency conflict or concurrent modification', type: ErrorResponseDto })
+    @ApiOperation({ summary: 'Confirmar recepción de traslado en tránsito en la bodega de destino' })
+    @ApiParam({ name: 'id', description: 'Identificador UUID del traslado' })
+    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Clave única opcional para garantizar ejecución idempotente' })
+    @ApiResponse({ status: 200, description: 'Traslado recibido y finalizado exitosamente', type: ReceiveTransferResponseDto })
+    @ApiResponse({ status: 400, description: 'El traslado no se encuentra en estado en tránsito', type: ErrorResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Traslado no encontrado', type: ErrorResponseDto })
+    @ApiResponse({ status: 409, description: 'Conflicto de idempotencia o concurrencia', type: ErrorResponseDto })
     async receiveTransfer(
         @Param('id', ParseUUIDPipe) id: string,
         @CurrentUser() user: AuthenticatedUser,

@@ -69,15 +69,15 @@ export class InventoryMovementsController {
 
     @Post('receive')
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER)
-    @ApiOperation({ summary: 'Receive inventory into a warehouse and recalculate weighted average cost (CPP)' })
-    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Optional unique key to ensure idempotent execution' })
+    @ApiOperation({ summary: 'Recibir inventario en bodega y recalcular el Costo Promedio Ponderado (CPP)' })
+    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Clave única opcional para garantizar ejecución idempotente' })
     @ApiBody({ type: ReceiveStockDto })
-    @ApiResponse({ status: 201, description: 'Stock received and posted to kardex', type: ReceiveStockResponseDto })
-    @ApiResponse({ status: 400, description: 'Invalid quantities, costs, or validation error', type: ErrorResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Warehouse, product or UOM not found', type: ErrorResponseDto })
-    @ApiResponse({ status: 409, description: 'Idempotency conflict or concurrent modification', type: ErrorResponseDto })
+    @ApiResponse({ status: 201, description: 'Inventario recibido y asentado en Kardex', type: ReceiveStockResponseDto })
+    @ApiResponse({ status: 400, description: 'Cantidades o costos inválidos, o error de validación', type: ErrorResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Bodega, producto o unidad de medida no encontrada', type: ErrorResponseDto })
+    @ApiResponse({ status: 409, description: 'Conflicto de idempotencia o concurrencia', type: ErrorResponseDto })
     async receive(
         @Body() dto: ReceiveStockDto,
         @CurrentUser() user: AuthenticatedUser,
@@ -105,15 +105,15 @@ export class InventoryMovementsController {
 
     @Post('dispatch')
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER, UserRole.CASHIER)
-    @ApiOperation({ summary: 'Dispatch inventory out of warehouse with CPP valuation and negative-stock prevention' })
-    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Optional unique key to ensure idempotent execution' })
+    @ApiOperation({ summary: 'Despachar inventario de bodega con valuación CPP y prevención de stock negativo' })
+    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Clave única opcional para garantizar ejecución idempotente' })
     @ApiBody({ type: DispatchStockDto })
-    @ApiResponse({ status: 201, description: 'Stock dispatched and posted to kardex', type: DispatchStockResponseDto })
-    @ApiResponse({ status: 400, description: 'Insufficient stock or invalid input', type: ErrorResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Warehouse, product or balance not found', type: ErrorResponseDto })
-    @ApiResponse({ status: 409, description: 'Idempotency conflict or concurrent modification', type: ErrorResponseDto })
+    @ApiResponse({ status: 201, description: 'Inventario despachado y asentado en Kardex', type: DispatchStockResponseDto })
+    @ApiResponse({ status: 400, description: 'Stock insuficiente o datos de entrada inválidos', type: ErrorResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Bodega, producto o balance no encontrado', type: ErrorResponseDto })
+    @ApiResponse({ status: 409, description: 'Conflicto de idempotencia o concurrencia', type: ErrorResponseDto })
     async dispatch(
         @Body() dto: DispatchStockDto,
         @CurrentUser() user: AuthenticatedUser,
@@ -141,15 +141,15 @@ export class InventoryMovementsController {
     @Post('reverse')
     @HttpCode(HttpStatus.OK)
     @Roles(UserRole.OWNER, UserRole.ADMIN)
-    @ApiOperation({ summary: 'Reverse a previously posted movement creating compensating ledger entries' })
-    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Optional unique key to ensure idempotent execution' })
+    @ApiOperation({ summary: 'Revertir un movimiento previo generando contra-asientos compensatorios en Kardex' })
+    @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Clave única opcional para garantizar ejecución idempotente' })
     @ApiBody({ type: ReverseMovementDto })
-    @ApiResponse({ status: 200, description: 'Movement reversed successfully', type: ReverseMovementResponseDto })
-    @ApiResponse({ status: 400, description: 'Movement cannot be reversed or already reversed', type: ErrorResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role (requires OWNER or ADMIN)', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Original movement not found', type: ErrorResponseDto })
-    @ApiResponse({ status: 409, description: 'Idempotency conflict or concurrent modification', type: ErrorResponseDto })
+    @ApiResponse({ status: 200, description: 'Movimiento revertido exitosamente', type: ReverseMovementResponseDto })
+    @ApiResponse({ status: 400, description: 'El movimiento no puede ser revertido o ya fue revertido previamente', type: ErrorResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: requiere rol OWNER o ADMIN', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Movimiento original no encontrado', type: ErrorResponseDto })
+    @ApiResponse({ status: 409, description: 'Conflicto de idempotencia o concurrencia', type: ErrorResponseDto })
     async reverse(
         @Body() dto: ReverseMovementDto,
         @CurrentUser() user: AuthenticatedUser,

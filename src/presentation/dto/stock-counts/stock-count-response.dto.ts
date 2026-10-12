@@ -11,7 +11,7 @@ export class StockCountLineSummaryResponseDto {
     @ApiProperty({ example: '22222222-2222-4222-8222-222222222222' })
     variantId!: string;
 
-    @ApiProperty({ example: '10.0000', description: 'Snapshot system stock quantity' })
+    @ApiProperty({ example: '10.0000', description: 'Cantidad de stock capturada del sistema en la instantánea' })
     systemQuantity!: string;
 }
 

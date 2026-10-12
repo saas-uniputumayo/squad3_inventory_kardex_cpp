@@ -43,10 +43,10 @@ export class WarehousesController {
 
     @Get()
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.WAREHOUSE_MANAGER, UserRole.CASHIER)
-    @ApiOperation({ summary: 'List warehouses for the current tenant' })
-    @ApiResponse({ status: 200, description: 'List of warehouses', type: [WarehouseResponseDto] })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
+    @ApiOperation({ summary: 'Listar bodegas del tenant autenticado' })
+    @ApiResponse({ status: 200, description: 'Lista de bodegas', type: [WarehouseResponseDto] })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
     async list(
         @Query() query: ListWarehousesQueryDto,
         @CurrentUser() user: AuthenticatedUser,

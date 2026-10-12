@@ -8,4 +8,5 @@ squad1_core_architecture_rls_rbac/
 squad1_core_architecture_rls_rbac/*
 .js
 .vscode/
-~$*
+~$*
+src/auth/*

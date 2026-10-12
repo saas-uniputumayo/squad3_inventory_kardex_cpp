@@ -8,25 +8,25 @@ export class ReceiveStockLineResponseDto {
     @ApiProperty({ example: '22222222-2222-4222-8222-222222222222' })
     variantId!: string;
 
-    @ApiProperty({ example: '10.0000', description: 'Quantity received' })
+    @ApiProperty({ example: '10.0000', description: 'Cantidad recibida (entrada)' })
     quantity!: string;
 
-    @ApiProperty({ example: '15000.00', description: 'Unit cost received' })
+    @ApiProperty({ example: '15000.00', description: 'Costo unitario de compra recibido' })
     unitCost!: string;
 
-    @ApiProperty({ example: '150000.00', description: 'Total cost of the received line' })
+    @ApiProperty({ example: '150000.00', description: 'Costo total de la línea recibida' })
     totalCost!: string;
 
-    @ApiProperty({ example: '0.0000', description: 'Stock quantity prior to movement' })
+    @ApiProperty({ example: '0.0000', description: 'Existencia previa al movimiento' })
     previousStock!: string;
 
-    @ApiProperty({ example: '10.0000', description: 'New stock quantity after movement' })
+    @ApiProperty({ example: '10.0000', description: 'Nueva existencia posterior al movimiento' })
     newStock!: string;
 
-    @ApiProperty({ example: '0.00', description: 'Previous average cost (CPP)' })
+    @ApiProperty({ example: '0.00', description: 'Costo promedio ponderado (CPP) previo' })
     previousAverageCost!: string;
 
-    @ApiProperty({ example: '15000.00', description: 'Recalculated weighted average cost (CPP)' })
+    @ApiProperty({ example: '15000.00', description: 'Costo promedio ponderado (CPP) recalculado' })
     newAverageCost!: string;
 }
 
@@ -49,7 +49,7 @@ export class ReceiveStockResponseDto {
     @ApiProperty({ type: [ReceiveStockLineResponseDto] })
     lines!: ReceiveStockLineResponseDto[];
 
-    @ApiProperty({ example: '150000.00', description: 'Total cost of all lines received' })
+    @ApiProperty({ example: '150000.00', description: 'Costo total acumulado de las líneas recibidas' })
     totalReceivedCost!: string;
 
     @ApiProperty({ example: '2026-10-06T10:00:00.000Z' })
@@ -63,19 +63,19 @@ export class DispatchStockLineResponseDto {
     @ApiProperty({ example: '22222222-2222-4222-8222-222222222222' })
     variantId!: string;
 
-    @ApiProperty({ example: '5.0000', description: 'Quantity dispatched' })
+    @ApiProperty({ example: '5.0000', description: 'Cantidad despachada (salida)' })
     quantity!: string;
 
-    @ApiProperty({ example: '15000.00', description: 'Current CPP at time of dispatch' })
+    @ApiProperty({ example: '15000.00', description: 'CPP vigente al momento del despacho' })
     unitCost!: string;
 
-    @ApiProperty({ example: '75000.00', description: 'Total dispatch valuation' })
+    @ApiProperty({ example: '75000.00', description: 'Valoración total del despacho a costo CPP' })
     totalCost!: string;
 
-    @ApiProperty({ example: '10.0000', description: 'Stock prior to dispatch' })
+    @ApiProperty({ example: '10.0000', description: 'Existencia previa al despacho' })
     previousStock!: string;
 
-    @ApiProperty({ example: '5.0000', description: 'Remaining stock after dispatch' })
+    @ApiProperty({ example: '5.0000', description: 'Existencia remanente tras el despacho' })
     remainingStock!: string;
 }
 
@@ -98,7 +98,7 @@ export class DispatchStockResponseDto {
     @ApiProperty({ type: [DispatchStockLineResponseDto] })
     lines!: DispatchStockLineResponseDto[];
 
-    @ApiProperty({ example: '75000.00' })
+    @ApiProperty({ example: '75000.00', description: 'Costo total acumulado del despacho (CMV)' })
     totalDispatchCost!: string;
 
     @ApiProperty({ example: '2026-10-06T10:00:00.000Z' })
@@ -112,13 +112,13 @@ export class ReversalLineResponseDto {
     @ApiProperty({ example: '22222222-2222-4222-8222-222222222222' })
     variantId!: string;
 
-    @ApiProperty({ example: '5.0000', description: 'Restored quantity' })
+    @ApiProperty({ example: '5.0000', description: 'Cantidad física restaurada' })
     quantityRestored!: string;
 
-    @ApiProperty({ example: '10.0000', description: 'Stock after reversal' })
+    @ApiProperty({ example: '10.0000', description: 'Nueva existencia tras la reversión' })
     newStock!: string;
 
-    @ApiProperty({ example: '15000.00', description: 'Updated CPP after reversal' })
+    @ApiProperty({ example: '15000.00', description: 'CPP actualizado tras la reversión' })
     newAverageCost!: string;
 }
 
@@ -132,7 +132,7 @@ export class ReverseMovementResponseDto {
     @ApiProperty({ enum: MovementStatus, example: MovementStatus.POSTED })
     status!: MovementStatus;
 
-    @ApiProperty({ example: 'Incorrect shipment quantity' })
+    @ApiProperty({ example: 'Anulación por error en cantidad digitada' })
     reason!: string;
 
     @ApiProperty({ type: [ReversalLineResponseDto] })

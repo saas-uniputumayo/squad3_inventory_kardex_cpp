@@ -79,13 +79,13 @@ export class ProductsController {
 
     @Post()
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER)
-    @ApiOperation({ summary: 'Create a new catalog product' })
+    @ApiOperation({ summary: 'Crear un nuevo producto en el catálogo' })
     @ApiBody({ type: CreateProductDto })
-    @ApiResponse({ status: 201, description: 'Product successfully created', type: CreateProductResponseDto })
-    @ApiResponse({ status: 400, description: 'Invalid input or validation error', type: ErrorResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 409, description: 'Duplicate SKU or barcode', type: ErrorResponseDto })
+    @ApiResponse({ status: 201, description: 'Producto creado exitosamente', type: CreateProductResponseDto })
+    @ApiResponse({ status: 400, description: 'Datos de entrada inválidos o error de validación', type: ErrorResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 409, description: 'Conflicto: SKU o código de barras duplicado', type: ErrorResponseDto })
     async create(
         @Body() dto: CreateProductDto,
         @CurrentUser() user: AuthenticatedUser,
@@ -117,14 +117,14 @@ export class ProductsController {
 
     @Patch(':id')
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER)
-    @ApiOperation({ summary: 'Update an existing product (or activate/deactivate)' })
-    @ApiParam({ name: 'id', description: 'Product UUID' })
+    @ApiOperation({ summary: 'Actualizar un producto existente o modificar su estado' })
+    @ApiParam({ name: 'id', description: 'Identificador UUID del producto' })
     @ApiBody({ type: UpdateProductDto })
-    @ApiResponse({ status: 200, description: 'Product successfully updated', type: UpdateProductResponseDto })
-    @ApiResponse({ status: 400, description: 'Validation error', type: ErrorResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Product not found', type: ErrorResponseDto })
+    @ApiResponse({ status: 200, description: 'Producto actualizado exitosamente', type: UpdateProductResponseDto })
+    @ApiResponse({ status: 400, description: 'Error de validación en los campos', type: ErrorResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Producto no encontrado', type: ErrorResponseDto })
     async update(
         @Param('id', ParseUUIDPipe) id: string,
         @Body() dto: UpdateProductDto,
@@ -153,10 +153,10 @@ export class ProductsController {
 
     @Get()
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.WAREHOUSE_MANAGER, UserRole.CASHIER)
-    @ApiOperation({ summary: 'Search and list products with optional stock summary' })
-    @ApiResponse({ status: 200, description: 'Paginated list of products', type: SearchProductsResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
+    @ApiOperation({ summary: 'Buscar y listar productos con resumen opcional de existencias' })
+    @ApiResponse({ status: 200, description: 'Lista paginada de productos', type: SearchProductsResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
     async search(
         @Query() query: SearchProductsQueryDto,
         @CurrentUser() user: AuthenticatedUser,
@@ -176,13 +176,13 @@ export class ProductsController {
 
     @Get(':id')
     @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.WAREHOUSE_MANAGER, UserRole.CASHIER)
-    @ApiOperation({ summary: 'Get product detail by ID with warehouse stock info' })
-    @ApiParam({ name: 'id', description: 'Product UUID' })
-    @ApiQuery({ name: 'warehouseId', required: false, description: 'Warehouse UUID for stock breakdown' })
-    @ApiResponse({ status: 200, description: 'Product details', type: ProductDetailResponseDto })
-    @ApiResponse({ status: 401, description: 'Unauthorized', type: ErrorResponseDto })
-    @ApiResponse({ status: 403, description: 'Forbidden role', type: ErrorResponseDto })
-    @ApiResponse({ status: 404, description: 'Product not found', type: ErrorResponseDto })
+    @ApiOperation({ summary: 'Obtener detalle del producto por ID con existencias por bodega' })
+    @ApiParam({ name: 'id', description: 'Identificador UUID del producto' })
+    @ApiQuery({ name: 'warehouseId', required: false, description: 'UUID de bodega opcional para desglose de stock' })
+    @ApiResponse({ status: 200, description: 'Detalle del producto y sus variantes', type: ProductDetailResponseDto })
+    @ApiResponse({ status: 401, description: 'No autorizado / Token ausente o inválido', type: ErrorResponseDto })
+    @ApiResponse({ status: 403, description: 'Acceso denegado: rol no autorizado', type: ErrorResponseDto })
+    @ApiResponse({ status: 404, description: 'Producto no encontrado', type: ErrorResponseDto })
     async getDetail(
         @Param('id', ParseUUIDPipe) id: string,
         @Query('warehouseId', new ParseUUIDPipe({ optional: true })) warehouseId: string | undefined,
